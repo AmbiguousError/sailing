@@ -162,13 +162,17 @@ def main():
                     ai_pos = (ai.world_x, ai.world_y)
                     ai_prev_pos = (ai.prev_world_x, ai.prev_world_y)
                     
-                    # Buoy rounding
+                    # Buoy rounding and lap completion
                     if ai.race_started and ai.next_buoy_index < len(course_buoys_coords):
                         target_buoy_pos = course_buoys_coords[ai.next_buoy_index]
                         if distance_sq(ai_pos, target_buoy_pos) < BUOY_ROUNDING_RADIUS**2:
                             ai.next_buoy_index += 1
+                            if ai.next_buoy_index >= len(course_buoys_coords):
+                                if ai.current_lap < total_laps:
+                                    ai.current_lap += 1
+                                    ai.next_buoy_index = 0
 
-                    # Line crossing
+                    # Line crossing (for start and finish only)
                     if current_time_s - ai.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
                         if check_line_crossing(ai_prev_pos, ai_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
                             ai.last_line_crossing_time = current_time_s
@@ -176,12 +180,8 @@ def main():
                                 ai.race_started = True
                                 ai.current_lap = 1
                                 ai.next_buoy_index = 0
-                            elif ai.next_buoy_index >= len(course_buoys_coords):
-                                if ai.current_lap >= total_laps:
-                                    ai.is_finished = True
-                                else:
-                                    ai.current_lap += 1
-                                    ai.next_buoy_index = 0
+                            elif ai.race_started and ai.current_lap >= total_laps and ai.next_buoy_index >= len(course_buoys_coords):
+                                ai.is_finished = True
             
             # --- Player Update ---
             player_boat.on_sandbar = False
@@ -201,14 +201,24 @@ def main():
                 boat_prev_pos = (player_boat.prev_world_x, player_boat.prev_world_y)
                 num_course_buoys = len(course_buoys_coords)
 
-                # Buoy rounding
+                # Buoy rounding and lap completion
                 if race_started and next_buoy_index >= 0 and next_buoy_index < num_course_buoys:
                     current_course_buoy = buoys[course_buoy_list_start_index + next_buoy_index]
                     if distance_sq(boat_pos, (current_course_buoy.world_x, current_course_buoy.world_y)) < BUOY_ROUNDING_RADIUS**2:
                         print(f"Player rounded Buoy {next_buoy_index + 1}")
                         next_buoy_index += 1
 
-                # Line crossing
+                        if next_buoy_index >= num_course_buoys:  # Completed a lap of buoys
+                            lap_time = current_time_s - lap_start_time
+                            lap_times.append(lap_time)
+                            print(f"Lap {current_lap} finished: {format_time(lap_time)}")
+                            if current_lap < total_laps:
+                                current_lap += 1
+                                next_buoy_index = 0 # Go to the first buoy of the next lap
+                                lap_start_time = current_time_s
+                                print(f"Starting Lap {current_lap}")
+
+                # Line crossing (for start and finish only)
                 if current_time_s - last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
                     if check_line_crossing(boat_prev_pos, boat_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
                         print("Player crossed Start/Finish Line")
@@ -221,20 +231,11 @@ def main():
                             total_race_start_time = current_time_s
                             lap_times = []
                             print("Race Started!")
-                        elif next_buoy_index >= num_course_buoys:
-                            lap_time = current_time_s - lap_start_time
-                            lap_times.append(lap_time)
-                            print(f"Lap {current_lap} finished: {format_time(lap_time)}")
-                            if current_lap >= total_laps:
-                                race_finished = True
-                                final_total_time = current_time_s - total_race_start_time
-                                print(f"Race Finished! Total Time: {format_time(final_total_time)}")
-                                game_state = GameState.FINISHED
-                            else:
-                                current_lap += 1
-                                next_buoy_index = 0
-                                lap_start_time = current_time_s
-                                print(f"Starting Lap {current_lap}")
+                        elif race_started and current_lap >= total_laps and next_buoy_index >= num_course_buoys:
+                            race_finished = True
+                            final_total_time = current_time_s - total_race_start_time
+                            print(f"Race Finished! Total Time: {format_time(final_total_time)}")
+                            game_state = GameState.FINISHED
 
         screen.fill(BLUE)
         if game_state == GameState.SETUP:
