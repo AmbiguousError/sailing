@@ -82,6 +82,8 @@ def main():
     race_finished = False
     final_total_time = 0.0
     race_results = []
+    player_finish_time_s = None
+    race_end_timer_started = False
 
 
     # Other Variables
@@ -117,6 +119,7 @@ def main():
     def start_new_race():
         nonlocal course_generated, race_started, race_finished, next_buoy_index
         nonlocal lap_times, final_total_time, wind_direction
+        nonlocal player_finish_time_s, race_end_timer_started, current_lap
         
         print(f"--- Starting Race {current_race}/{total_races} ---")
 
@@ -138,9 +141,12 @@ def main():
         # Reset player-specific race vars
         race_started = False
         race_finished = False
+        current_lap = 1
         next_buoy_index = -1
         lap_times = []
         final_total_time = 0.0
+        player_finish_time_s = None
+        race_end_timer_started = False
         
         course_generated = False
 
@@ -293,10 +299,26 @@ def main():
                             total_race_start_time = current_time_s
                             lap_start_time = current_time_s
                         elif race_started and current_lap >= total_laps and next_buoy_index >= num_course_buoys:
-                            race_finished = True
-                            final_total_time = current_time_s - total_race_start_time
+                            if not race_finished:
+                                race_finished = True
+                                final_total_time = current_time_s - total_race_start_time
+                                player_finish_time_s = current_time_s
+                                race_end_timer_started = True
             
-            if race_finished and all(b.is_finished for b in ai_boats):
+            # --- End of Race Transition Logic ---
+            all_ai_finished = all(b.is_finished for b in ai_boats)
+            timer_expired = race_end_timer_started and (current_time_s - player_finish_time_s >= 20)
+
+            if race_finished and (all_ai_finished or timer_expired):
+                if timer_expired:
+                    num_course_buoys = len(course_buoys_coords)
+                    for ai in ai_boats:
+                        if not ai.is_finished:
+                            buoys_remaining = (total_laps * num_course_buoys) - ((ai.current_lap - 1) * num_course_buoys + ai.next_buoy_index)
+                            penalty = buoys_remaining * 10 
+                            ai.finish_time = final_total_time + 20 + penalty
+                            ai.is_finished = True
+                
                 game_state = GameState.RACE_RESULTS
                 race_results = [{'boat': player_boat, 'time': final_total_time, 'laps': lap_times}]
                 for ai in ai_boats:
@@ -416,13 +438,14 @@ def main():
             draw_map(screen, player_boat, ai_boats, sandbars, buoys, map_next_buoy_highlight_index, START_FINISH_LINE, MAP_RECT, WORLD_BOUNDS)
 
         elif game_state == GameState.RACE_RESULTS:
-            title_surf = title_font.render(f"Race {current_race} Results", True, WHITE)
+            title_surf = title_font.render(f"Race {current_race} of {total_races} Results", True, WHITE)
             screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, 20))
 
             # Display Race Results and Series Standings side-by-side
-            col1_x = 100
+            col1_x = 50
             col2_x = SCREEN_WIDTH // 2 + 50
-            y_offset = 100
+            y_offset = 80
+            y_offset2 = y_offset
 
             # Column 1: Race Results
             results_title_surf = font.render("Race Results:", True, WHITE)
@@ -435,18 +458,17 @@ def main():
                 for j, l_time in enumerate(result['laps']):
                     lap_time_surf = lap_font.render(f"    Lap {j+1}: {format_time(l_time)}", True, GRAY)
                     screen.blit(lap_time_surf, (col1_x + 30, y_offset)); y_offset += 20
-                y_offset += 10
+                y_offset += 5
 
 
             # Column 2: Series Standings
-            y_offset = 100
             standings_title_surf = font.render("Series Standings:", True, WHITE)
-            screen.blit(standings_title_surf, (col2_x, y_offset)); y_offset += 30
+            screen.blit(standings_title_surf, (col2_x, y_offset2)); y_offset2 += 30
             
             sorted_standings = sorted(all_boats, key=lambda b: b.score, reverse=True)
             for i, boat in enumerate(sorted_standings):
                 rank_surf = lap_font.render(f"{i+1}. {boat.name} - {boat.score} points", True, boat.color)
-                screen.blit(rank_surf, (col2_x + 20, y_offset)); y_offset += 25
+                screen.blit(rank_surf, (col2_x + 20, y_offset2)); y_offset2 += 25
             
             button_text = "Next Race" if current_race < total_races else "Final Results"
             draw_button(screen, next_race_button_rect, button_text, button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
