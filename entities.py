@@ -285,25 +285,45 @@ class Buoy:
 
 class AIBoat(Boat):
     """An AI-controlled boat that races against the player."""
-    def __init__(self, world_x, world_y, sailing_style):
-        super().__init__(0, 0, boat_color=AI_BOAT_COLOR)
+    def __init__(self, world_x, world_y, sailing_style, color):
+        super().__init__(0, 0, boat_color=color)
         self.world_x = world_x
         self.world_y = world_y
         self.style = sailing_style
         self.tack_decision_time = 0
 
         # AI-specific race progress
+        self.race_started = False
         self.next_buoy_index = 0
         self.current_lap = 1
         self.last_line_crossing_time = 0
         self.is_finished = False
 
-        if self.style == SailingStyle.ERRATIC:
-            self.turn_rate_modifier = random.uniform(0.7, 1.2)
+        if self.style == SailingStyle.PERFECTIONIST:
+            self.turn_rate_modifier = random.uniform(0.95, 1.05)
+            self.sail_trim_error = random.uniform(-5, 5)
+            self.heading_error = random.uniform(-2, 2)
+            self.tack_anticipation = random.uniform(5, 10)
+        elif self.style == SailingStyle.AGGRESSIVE:
+            self.turn_rate_modifier = random.uniform(0.8, 1.1)
+            self.sail_trim_error = random.uniform(-10, 10)
+            self.heading_error = random.uniform(-5, 5)
+            self.tack_anticipation = random.uniform(0, 5)
+        elif self.style == SailingStyle.CAUTIOUS:
+            self.turn_rate_modifier = random.uniform(0.7, 0.95)
             self.sail_trim_error = random.uniform(-15, 15)
+            self.heading_error = random.uniform(-8, 8)
+            self.tack_anticipation = random.uniform(10, 15)
+        elif self.style == SailingStyle.ERRATIC:
+            self.turn_rate_modifier = random.uniform(0.6, 1.2)
+            self.sail_trim_error = random.uniform(-20, 20)
+            self.heading_error = random.uniform(-12, 12)
+            self.tack_anticipation = random.uniform(-5, 15)
         else:
             self.turn_rate_modifier = 1.0
             self.sail_trim_error = 0
+            self.heading_error = 0
+            self.tack_anticipation = 0
 
     def ai_update(self, wind_speed, wind_direction, course_buoys, start_finish_line, dt):
         """The brain of the AI boat."""
@@ -317,54 +337,70 @@ class AIBoat(Boat):
             super().update(0, 0, dt)
             return
 
-        desired_heading = self.calculate_desired_heading(target, wind_direction)
+        perceived_wind_direction = normalize_angle(wind_direction + random.uniform(-5, 5))
+        desired_heading = self.calculate_desired_heading(target, perceived_wind_direction)
+        desired_heading = normalize_angle(desired_heading + self.heading_error)
 
         heading_diff = angle_difference(desired_heading, self.heading)
         turn_direction = 0
-        if abs(heading_diff) > 2.0:
+        if abs(heading_diff) > 3.0:
             turn_direction = 1 if heading_diff > 0 else -1
         self.turn(turn_direction * self.turn_rate_modifier)
 
-        self.ai_trim_sails()
+        self.ai_trim_sails(perceived_wind_direction, dt)
 
         super().update(wind_speed, wind_direction, dt)
 
     def get_current_target(self, course_buoys, start_finish_line):
-        """Determines the AI's next target coordinates."""
+        """Determines the AI's next target coordinates, can be slightly off."""
         if self.next_buoy_index < len(course_buoys):
-            return course_buoys[self.next_buoy_index]
+            base_target = course_buoys[self.next_buoy_index]
         else:
-            return ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
-                    (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+            base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
+                           (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+
+        offset_factor = 1.0
+        if self.style == SailingStyle.CAUTIOUS:
+            offset_factor = 1.5
+        elif self.style == SailingStyle.ERRATIC:
+            offset_factor = 2.0
+
+        offset_x = random.uniform(-10 * offset_factor, 10 * offset_factor)
+        offset_y = random.uniform(-10 * offset_factor, 10 * offset_factor)
+        return (base_target[0] + offset_x, base_target[1] + offset_y)
 
     def calculate_desired_heading(self, target_pos, wind_direction):
-        """Calculates the best heading to the target, avoiding the no-go zone."""
+        """Calculates the best heading to the target, avoiding the no-go zone, with variations."""
         target_dx = target_pos[0] - self.world_x
         target_dy = target_pos[1] - self.world_y
         direct_heading_to_target = normalize_angle(rad_to_deg(math.atan2(target_dy, target_dx)))
 
         wind_angle_diff = abs(angle_difference(direct_heading_to_target, wind_direction))
 
-        if wind_angle_diff < MIN_SAILING_ANGLE:
+        if wind_angle_diff < MIN_SAILING_ANGLE + self.tack_anticipation:
+            tack_angle = MIN_SAILING_ANGLE + random.uniform(-5, 10)
             if self.world_x > 0:
-                return normalize_angle(wind_direction - MIN_SAILING_ANGLE - 5)
+                return normalize_angle(wind_direction - tack_angle - random.uniform(0, 5))
             else:
-                return normalize_angle(wind_direction + MIN_SAILING_ANGLE + 5)
+                return normalize_angle(wind_direction + tack_angle + random.uniform(0, 5))
         else:
-            return direct_heading_to_target
+            overshoot = 0
+            if self.style == SailingStyle.AGGRESSIVE:
+                overshoot = random.uniform(-2, 5)
+            elif self.style == SailingStyle.ERRATIC:
+                overshoot = random.uniform(-10, 10)
+            return normalize_angle(direct_heading_to_target + overshoot)
 
-    def ai_trim_sails(self):
-        """Automatically trims the sails based on the sailing style."""
-        target_trim = self.optimal_sail_trim
+    def ai_trim_sails(self, wind_direction, dt):
+        """Automatically trims the sails based on the sailing style with more error."""
+        wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+        optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90)
+        optimal_trim = max(-MAX_SAIL_ANGLE_REL, min(MAX_SAIL_ANGLE_REL, optimal_trim))
+        target_trim = optimal_trim + self.sail_trim_error
 
-        if self.style == SailingStyle.AGGRESSIVE:
-            self.sail_angle_rel = target_trim
-        elif self.style == SailingStyle.CAUTIOUS:
-            diff = angle_difference(target_trim, self.sail_angle_rel)
-            self.trim_sail(1 if diff > 0 else -1)
-        elif self.style == SailingStyle.ERRATIC:
-            diff = angle_difference(target_trim + self.sail_trim_error, self.sail_angle_rel)
-            if abs(diff) > 5:
-                self.trim_sail(1 if diff > 0 else -1)
-        else: # PERFECTIONIST
-             self.sail_angle_rel = lerp(self.sail_angle_rel, target_trim, 0.15)
+        trim_speed_factor = 0.1 if self.style == SailingStyle.CAUTIOUS else 0.3
+        diff = angle_difference(target_trim, self.sail_angle_rel)
+        if abs(diff) > 2:
+            trim_direction = 1 if diff > 0 else -1
+            self.sail_angle_rel += trim_direction * trim_speed_factor * SAIL_TRIM_SPEED * 60 * dt
+            self.sail_angle_rel = max(-MAX_SAIL_ANGLE_REL, min(MAX_SAIL_ANGLE_REL, self.sail_angle_rel))

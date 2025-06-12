@@ -31,6 +31,7 @@ def main():
     sandbars = []
     buoys = []
     course_buoys_coords = []
+    course_buoy_list_start_index = 2
 
     # UI Elements
     start_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.6, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
@@ -90,12 +91,15 @@ def main():
                         player_boat.reset_position()
 
                         ai_boats.clear()
+                        available_colors = AI_BOAT_COLORS[:]
                         for i in range(NUM_AI_BOATS):
                             start_x = -50 - (i * 25)
                             start_y = random.uniform(-100, 100)
                             style = random.choice(list(SailingStyle))
-                            ai_boats.append(AIBoat(start_x, start_y, style))
-                            print(f"Created AI Boat {i+1} with style: {style.name}")
+                            color = random.choice(available_colors) if available_colors else GRAY
+                            if color in available_colors: available_colors.remove(color)
+                            ai_boats.append(AIBoat(start_x, start_y, style, color))
+                            print(f"Created AI Boat {i+1} with style: {style.name}, Color: {color}")
 
                         world_offset_x = player_boat.world_x
                         world_offset_y = player_boat.world_y
@@ -143,6 +147,7 @@ def main():
                 wind_direction = normalize_angle(wind_direction + dir_change)
                 last_wind_update = current_ticks
 
+            # --- AI Update Loop ---
             for ai in ai_boats:
                 ai.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt)
                 ai.on_sandbar = False
@@ -151,25 +156,34 @@ def main():
                     if ai_world_rect.colliderect(sandbar.rect):
                         ai.on_sandbar = True
                         break
-
-                if not ai.is_finished and current_time_s - ai.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
+                
+                # AI Race Progression
+                if not ai.is_finished:
                     ai_pos = (ai.world_x, ai.world_y)
                     ai_prev_pos = (ai.prev_world_x, ai.prev_world_y)
-
-                    if ai.next_buoy_index < len(course_buoys_coords):
+                    
+                    # Buoy rounding
+                    if ai.race_started and ai.next_buoy_index < len(course_buoys_coords):
                         target_buoy_pos = course_buoys_coords[ai.next_buoy_index]
                         if distance_sq(ai_pos, target_buoy_pos) < BUOY_ROUNDING_RADIUS**2:
                             ai.next_buoy_index += 1
 
-                    if check_line_crossing(ai_prev_pos, ai_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
-                        ai.last_line_crossing_time = current_time_s
-                        if ai.next_buoy_index >= len(course_buoys_coords):
-                            if ai.current_lap >= total_laps:
-                                ai.is_finished = True
-                            else:
-                                ai.current_lap += 1
+                    # Line crossing
+                    if current_time_s - ai.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
+                        if check_line_crossing(ai_prev_pos, ai_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
+                            ai.last_line_crossing_time = current_time_s
+                            if not ai.race_started:
+                                ai.race_started = True
+                                ai.current_lap = 1
                                 ai.next_buoy_index = 0
-
+                            elif ai.next_buoy_index >= len(course_buoys_coords):
+                                if ai.current_lap >= total_laps:
+                                    ai.is_finished = True
+                                else:
+                                    ai.current_lap += 1
+                                    ai.next_buoy_index = 0
+            
+            # --- Player Update ---
             player_boat.on_sandbar = False
             boat_world_rect = player_boat.get_world_collision_rect()
             for sandbar in sandbars:
@@ -181,23 +195,23 @@ def main():
             world_offset_x = player_boat.world_x
             world_offset_y = player_boat.world_y
 
+            # --- Player Race Progression ---
             if not race_finished:
                 boat_pos = (player_boat.world_x, player_boat.world_y)
                 boat_prev_pos = (player_boat.prev_world_x, player_boat.prev_world_y)
-                course_buoy_list_start_index = 2
                 num_course_buoys = len(course_buoys_coords)
 
+                # Buoy rounding
                 if race_started and next_buoy_index >= 0 and next_buoy_index < num_course_buoys:
                     current_course_buoy = buoys[course_buoy_list_start_index + next_buoy_index]
-                    dist_sq_to_buoy = distance_sq(boat_pos, (current_course_buoy.world_x, current_course_buoy.world_y))
-                    if dist_sq_to_buoy < BUOY_ROUNDING_RADIUS**2:
-                        print(f"Rounded Buoy {next_buoy_index + 1}")
+                    if distance_sq(boat_pos, (current_course_buoy.world_x, current_course_buoy.world_y)) < BUOY_ROUNDING_RADIUS**2:
+                        print(f"Player rounded Buoy {next_buoy_index + 1}")
                         next_buoy_index += 1
 
+                # Line crossing
                 if current_time_s - last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
-                    crossed_line = check_line_crossing(boat_prev_pos, boat_pos, START_FINISH_LINE[0], START_FINISH_LINE[1])
-                    if crossed_line:
-                        print("Crossed Start/Finish Line Segment")
+                    if check_line_crossing(boat_prev_pos, boat_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
+                        print("Player crossed Start/Finish Line")
                         last_line_crossing_time = current_time_s
                         if not race_started:
                             race_started = True
@@ -255,7 +269,7 @@ def main():
             pygame.draw.line(screen, START_FINISH_LINE_COLOR, sf_p1_screen, sf_p2_screen, START_FINISH_WIDTH)
 
             for i, buoy in enumerate(buoys):
-                 is_next_course_buoy = race_started and not race_finished and i >= 2 and (i - 2) == next_buoy_index
+                 is_next_course_buoy = race_started and not race_finished and i >= course_buoy_list_start_index and (i - course_buoy_list_start_index) == next_buoy_index
                  buoy.draw(screen, world_offset_x, world_offset_y, is_next_course_buoy)
 
             player_boat.draw(screen)
@@ -312,6 +326,7 @@ def main():
                 screen.blit(lap_time_surf, (SCREEN_WIDTH - lap_time_surf.get_width() - 10, SCREEN_HEIGHT - 100 - y_lap_offset))
                 y_lap_offset += 25
 
+            num_course_buoys = len(course_buoys_coords)
             map_next_buoy_highlight_index = course_buoy_list_start_index + next_buoy_index if race_started and next_buoy_index < num_course_buoys else -1
             draw_map(screen, player_boat, ai_boats, sandbars, buoys, map_next_buoy_highlight_index, START_FINISH_LINE, MAP_RECT, WORLD_BOUNDS)
 
