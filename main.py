@@ -11,14 +11,15 @@ from course import generate_random_buoys, generate_random_sandbars
 from graphics import draw_scrolling_water, draw_map, draw_button, create_wave_layer
 
 class GameState(Enum):
-    SETUP = auto()
+    SERIES_SETUP = auto()
     RACING = auto()
-    FINISHED = auto()
+    RACE_RESULTS = auto()
+    SERIES_END = auto()
 
 def handle_boat_collision(boat1, boat2):
     dist_sq = distance_sq((boat1.world_x, boat1.world_y), (boat2.world_x, boat2.world_y))
     min_dist = boat1.collision_radius + boat2.collision_radius
-    if dist_sq < min_dist**2:
+    if dist_sq < min_dist**2 and dist_sq > 0:
         dist = math.sqrt(dist_sq)
         overlap = min_dist - dist
         
@@ -26,12 +27,8 @@ def handle_boat_collision(boat1, boat2):
         dy = boat2.world_y - boat1.world_y
         
         # Normalize collision vector
-        if dist > 0:
-            nx = dx / dist
-            ny = dy / dist
-        else: # boats are at the exact same position
-            nx = 1.0
-            ny = 0.0
+        nx = dx / dist
+        ny = dy / dist
 
         # Push boats apart
         boat1.world_x -= nx * overlap * 0.5
@@ -54,7 +51,7 @@ def main():
     button_font = pygame.font.Font(None, 24)
 
     # Game Objects
-    player_boat = Boat(CENTER_X, CENTER_Y, boat_color=WHITE)
+    player_boat = Boat(CENTER_X, CENTER_Y, name="Player", boat_color=WHITE)
     ai_boats = []
     sandbars = []
     buoys = []
@@ -62,15 +59,20 @@ def main():
     course_buoy_list_start_index = 2
 
     # UI Elements
-    start_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.6, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
-    laps_minus_rect = pygame.Rect(CENTER_X - 60 - LAP_BUTTON_SIZE, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
-    laps_plus_rect = pygame.Rect(CENTER_X + 60, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
-    new_race_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.8, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
+    start_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.7, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
+    laps_minus_rect = pygame.Rect(CENTER_X - 100 - LAP_BUTTON_SIZE, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
+    laps_plus_rect = pygame.Rect(CENTER_X - 40, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
+    races_minus_rect = pygame.Rect(CENTER_X + 40, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
+    races_plus_rect = pygame.Rect(CENTER_X + 100, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
+    next_race_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.85, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
 
     # Game State Variables
-    game_state = GameState.SETUP
+    game_state = GameState.SERIES_SETUP
     selected_laps = DEFAULT_RACE_LAPS
+    selected_races = 1
     total_laps = selected_laps
+    total_races = selected_races
+    current_race = 0
     current_lap = 0
     next_buoy_index = -1
     lap_times = []
@@ -78,8 +80,9 @@ def main():
     total_race_start_time = 0.0
     race_started = False
     race_finished = False
-    last_line_crossing_time = -LINE_CROSSING_DEBOUNCE
     final_total_time = 0.0
+    race_results = []
+
 
     # Other Variables
     wind_speed = random.uniform(MIN_WIND_SPEED, MAX_WIND_SPEED)
@@ -90,6 +93,57 @@ def main():
     wave_layers = [create_wave_layer(SCREEN_WIDTH + 100, SCREEN_HEIGHT + 100, WAVE_DENSITY * (i+1)) for i in range(NUM_WAVE_LAYERS)]
     wave_offsets = [[0.0, 0.0] for _ in range(NUM_WAVE_LAYERS)]
     course_generated = False
+    
+    all_boats = [player_boat]
+    
+    def start_new_series():
+        nonlocal total_races, total_laps, current_race, all_boats
+        total_laps = selected_laps
+        total_races = selected_races
+        current_race = 1
+        
+        player_boat.score = 0
+        ai_boats.clear()
+        available_colors = AI_BOAT_COLORS[:]
+        for i in range(NUM_AI_BOATS):
+            color = random.choice(available_colors) if available_colors else GRAY
+            if color in available_colors: available_colors.remove(color)
+            ai_boats.append(AIBoat(0, 0, f"AI {i+1}", random.choice(list(SailingStyle)), color))
+        all_boats = [player_boat] + ai_boats
+        for boat in all_boats:
+            boat.score = 0
+        start_new_race()
+
+    def start_new_race():
+        nonlocal course_generated, race_started, race_finished, next_buoy_index
+        nonlocal lap_times, final_total_time, wind_direction
+        
+        print(f"--- Starting Race {current_race}/{total_races} ---")
+
+        # Reset race state for all boats
+        for i, boat in enumerate(all_boats):
+            boat.reset_position()
+            start_x = -50 - (i * 25)
+            start_y = random.uniform(-100, 100)
+            boat.world_x, boat.world_y = start_x, start_y
+            boat.last_line_crossing_time = -LINE_CROSSING_DEBOUNCE
+            if isinstance(boat, AIBoat):
+                boat.is_finished = False
+                boat.race_started = False
+                boat.lap_times = []
+                boat.finish_time = 0
+                boat.current_lap = 1
+                boat.next_buoy_index = -1
+
+        # Reset player-specific race vars
+        race_started = False
+        race_finished = False
+        next_buoy_index = -1
+        lap_times = []
+        final_total_time = 0.0
+        
+        course_generated = False
+
 
     # --- Main Loop ---
     running = True
@@ -101,56 +155,37 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            if game_state == GameState.SETUP:
+            if game_state == GameState.SERIES_SETUP:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if laps_minus_rect.collidepoint(event.pos):
-                        selected_laps = max(1, selected_laps - 1)
-                    elif laps_plus_rect.collidepoint(event.pos):
-                        selected_laps = min(10, selected_laps + 1)
+                    if laps_minus_rect.collidepoint(event.pos): selected_laps = max(1, selected_laps - 1)
+                    elif laps_plus_rect.collidepoint(event.pos): selected_laps = min(10, selected_laps + 1)
+                    elif races_minus_rect.collidepoint(event.pos): selected_races = max(1, selected_races - 1)
+                    elif races_plus_rect.collidepoint(event.pos): selected_races = min(10, selected_races + 1)
                     elif start_button_rect.collidepoint(event.pos):
+                        start_new_series()
                         game_state = GameState.RACING
-                        total_laps = selected_laps
-                        current_lap = 0
-                        next_buoy_index = -1
-                        lap_times = []
-                        race_started = False
-                        race_finished = False
-                        last_line_crossing_time = -LINE_CROSSING_DEBOUNCE
-                        player_boat.reset_position()
-
-                        ai_boats.clear()
-                        available_colors = AI_BOAT_COLORS[:]
-                        for i in range(NUM_AI_BOATS):
-                            start_x = -50 - (i * 25)
-                            start_y = random.uniform(-100, 100)
-                            style = random.choice(list(SailingStyle))
-                            color = random.choice(available_colors) if available_colors else GRAY
-                            if color in available_colors: available_colors.remove(color)
-                            ai_boats.append(AIBoat(start_x, start_y, style, color))
-                            print(f"Created AI Boat {i+1} with style: {style.name}, Color: {color}")
-
-                        world_offset_x = player_boat.world_x
-                        world_offset_y = player_boat.world_y
-                        course_generated = False
-                        print(f"Starting Race: {total_laps} Laps")
             elif game_state == GameState.RACING:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if WIND_BUTTON_RECT.collidepoint(event.pos):
                         wind_direction = random.uniform(0, 360)
                         last_wind_update = pygame.time.get_ticks()
-                        print(f"Wind direction randomized to: {wind_direction:.1f}")
-            elif game_state == GameState.FINISHED:
+            elif game_state in [GameState.RACE_RESULTS, GameState.SERIES_END]:
                  if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                     if new_race_button_rect.collidepoint(event.pos):
-                         game_state = GameState.SETUP
-                         sandbars = []
-                         buoys = []
-                         course_buoys_coords = []
-                         course_generated = False
+                     if next_race_button_rect.collidepoint(event.pos):
+                         if game_state == GameState.RACE_RESULTS:
+                             if current_race < total_races:
+                                 current_race += 1
+                                 start_new_race()
+                                 game_state = GameState.RACING
+                             else:
+                                 game_state = GameState.SERIES_END
+                         elif game_state == GameState.SERIES_END:
+                             game_state = GameState.SERIES_SETUP
 
-        if game_state == GameState.SETUP:
+
+        if game_state == GameState.SERIES_SETUP:
             if not course_generated:
-                print("Generating new course...")
+                wind_direction = random.uniform(0, 360)
                 course_buoys_coords = generate_random_buoys(NUM_COURSE_BUOYS)
                 sandbars = generate_random_sandbars(NUM_SANDBARS, course_buoys_coords)
                 buoys = []
@@ -159,6 +194,7 @@ def main():
                 for i, (bx, by) in enumerate(course_buoys_coords):
                     buoys.append(Buoy(bx, by, i))
                 course_generated = True
+
         elif game_state == GameState.RACING:
             keys = pygame.key.get_pressed()
             if keys[pygame.K_LEFT]: player_boat.turn(-1)
@@ -175,62 +211,58 @@ def main():
                 wind_direction = normalize_angle(wind_direction + dir_change)
                 last_wind_update = current_ticks
 
-            # --- AI Update Loop ---
-            for ai in ai_boats:
-                ai.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt)
-                ai.on_sandbar = False
-                ai_world_rect = ai.get_world_collision_rect()
-                for sandbar in sandbars:
-                    if ai_world_rect.colliderect(sandbar.rect):
-                        ai.on_sandbar = True
-                        break
+            # --- Update all boats ---
+            for boat in all_boats:
+                if isinstance(boat, AIBoat):
+                     boat.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt)
+                else:
+                    boat.update(wind_speed, wind_direction, dt)
                 
-                # AI Race Progression
-                if not ai.is_finished:
-                    ai_pos = (ai.world_x, ai.world_y)
-                    ai_prev_pos = (ai.prev_world_x, ai.prev_world_y)
-                    
-                    # Buoy rounding and lap completion
-                    if ai.race_started and ai.next_buoy_index < len(course_buoys_coords):
-                        target_buoy_pos = course_buoys_coords[ai.next_buoy_index]
-                        if distance_sq(ai_pos, target_buoy_pos) < BUOY_ROUNDING_RADIUS**2:
-                            ai.next_buoy_index += 1
-                            if ai.next_buoy_index >= len(course_buoys_coords):
-                                if ai.current_lap < total_laps:
-                                    ai.current_lap += 1
-                                    ai.next_buoy_index = 0
+                boat.on_sandbar = False
+                boat_world_rect = boat.get_world_collision_rect()
+                for sandbar in sandbars:
+                    if boat_world_rect.colliderect(sandbar.rect):
+                        boat.on_sandbar = True
+                        break
 
-                    # Line crossing (for start and finish only)
-                    if current_time_s - ai.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
-                        if check_line_crossing(ai_prev_pos, ai_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
-                            ai.last_line_crossing_time = current_time_s
-                            if not ai.race_started:
-                                ai.race_started = True
-                                ai.current_lap = 1
-                                ai.next_buoy_index = 0
-                                ai.race_start_time = current_time_s
-                            elif ai.race_started and ai.current_lap >= total_laps and ai.next_buoy_index >= len(course_buoys_coords):
-                                ai.is_finished = True
-                                ai.finish_time = current_time_s - ai.race_start_time
-            
-            # --- Player Update ---
-            player_boat.on_sandbar = False
-            boat_world_rect = player_boat.get_world_collision_rect()
-            for sandbar in sandbars:
-                if boat_world_rect.colliderect(sandbar.rect):
-                    player_boat.on_sandbar = True
-                    break
-
-            player_boat.update(wind_speed, wind_direction, dt)
-            
             # --- Boat Collisions ---
-            all_boats = [player_boat] + ai_boats
             for i in range(len(all_boats)):
                 for j in range(i + 1, len(all_boats)):
                     handle_boat_collision(all_boats[i], all_boats[j])
-
+            
             world_offset_x = player_boat.world_x
             world_offset_y = player_boat.world_y
+
+            # --- AI Race Progression ---
+            for ai in ai_boats:
+                if ai.is_finished: continue
+                ai_pos = (ai.world_x, ai.world_y)
+                ai_prev_pos = (ai.prev_world_x, ai.prev_world_y)
+                num_course_buoys = len(course_buoys_coords)
+
+                if ai.race_started and ai.next_buoy_index < num_course_buoys:
+                    current_course_buoy = buoys[course_buoy_list_start_index + ai.next_buoy_index]
+                    if distance_sq(ai_pos, (current_course_buoy.world_x, current_course_buoy.world_y)) < BUOY_ROUNDING_RADIUS**2:
+                        ai.next_buoy_index += 1
+                        if ai.next_buoy_index >= num_course_buoys:
+                            lap_time = current_time_s - ai.lap_start_time
+                            ai.lap_times.append(lap_time)
+                            if ai.current_lap < total_laps:
+                                ai.current_lap += 1
+                                ai.next_buoy_index = 0
+                                ai.lap_start_time = current_time_s
+
+                if current_time_s - ai.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
+                    if check_line_crossing(ai_prev_pos, ai_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
+                        ai.last_line_crossing_time = current_time_s
+                        if not ai.race_started:
+                            ai.race_started = True
+                            ai.race_start_time = current_time_s
+                            ai.lap_start_time = current_time_s
+                        elif ai.current_lap >= total_laps and ai.next_buoy_index >= num_course_buoys:
+                            if not ai.is_finished:
+                                ai.is_finished = True
+                                ai.finish_time = current_time_s - ai.race_start_time
 
             # --- Player Race Progression ---
             if not race_finished:
@@ -238,54 +270,69 @@ def main():
                 boat_prev_pos = (player_boat.prev_world_x, player_boat.prev_world_y)
                 num_course_buoys = len(course_buoys_coords)
 
-                # Buoy rounding and lap completion
                 if race_started and next_buoy_index >= 0 and next_buoy_index < num_course_buoys:
                     current_course_buoy = buoys[course_buoy_list_start_index + next_buoy_index]
                     if distance_sq(boat_pos, (current_course_buoy.world_x, current_course_buoy.world_y)) < BUOY_ROUNDING_RADIUS**2:
-                        print(f"Player rounded Buoy {next_buoy_index + 1}")
                         next_buoy_index += 1
-
-                        if next_buoy_index >= num_course_buoys:  # Completed a lap of buoys
+                        if next_buoy_index >= num_course_buoys:
                             lap_time = current_time_s - lap_start_time
                             lap_times.append(lap_time)
-                            print(f"Lap {current_lap} finished: {format_time(lap_time)}")
                             if current_lap < total_laps:
                                 current_lap += 1
-                                next_buoy_index = 0 # Go to the first buoy of the next lap
+                                next_buoy_index = 0
                                 lap_start_time = current_time_s
-                                print(f"Starting Lap {current_lap}")
 
-                # Line crossing (for start and finish only)
-                if current_time_s - last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
+                if current_time_s - player_boat.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
                     if check_line_crossing(boat_prev_pos, boat_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
-                        print("Player crossed Start/Finish Line")
-                        last_line_crossing_time = current_time_s
+                        player_boat.last_line_crossing_time = current_time_s
                         if not race_started:
                             race_started = True
+                            lap_times = []
                             current_lap = 1
                             next_buoy_index = 0
-                            lap_start_time = current_time_s
                             total_race_start_time = current_time_s
-                            lap_times = []
-                            print("Race Started!")
+                            lap_start_time = current_time_s
                         elif race_started and current_lap >= total_laps and next_buoy_index >= num_course_buoys:
                             race_finished = True
                             final_total_time = current_time_s - total_race_start_time
-                            print(f"Race Finished! Total Time: {format_time(final_total_time)}")
-                            game_state = GameState.FINISHED
+            
+            if race_finished and all(b.is_finished for b in ai_boats):
+                game_state = GameState.RACE_RESULTS
+                race_results = [{'boat': player_boat, 'time': final_total_time, 'laps': lap_times}]
+                for ai in ai_boats:
+                    race_results.append({'boat': ai, 'time': ai.finish_time, 'laps': ai.lap_times})
+                
+                race_results.sort(key=lambda x: x['time'])
 
+                for i, result in enumerate(race_results):
+                    points = POINTS_AWARDED[i] if i < len(POINTS_AWARDED) else 0
+                    result['boat'].score += points
+
+
+        # =====================================================================================
+        # --- DRAWING ---
+        # =====================================================================================
         screen.fill(BLUE)
-        if game_state == GameState.SETUP:
-            title_surf = title_font.render("Race Setup", True, WHITE)
+        if game_state == GameState.SERIES_SETUP:
+            title_surf = title_font.render("Race Series Setup", True, WHITE)
             screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, SCREEN_HEIGHT * 0.1))
+            
             laps_text = f"Laps: {selected_laps}"
             laps_surf = font.render(laps_text, True, WHITE)
-            screen.blit(laps_surf, (CENTER_X - laps_surf.get_width()//2, SCREEN_HEIGHT * 0.45))
+            screen.blit(laps_surf, (CENTER_X - 70 - laps_surf.get_width()//2, SCREEN_HEIGHT * 0.35))
             draw_button(screen, laps_minus_rect, "-", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
             draw_button(screen, laps_plus_rect, "+", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
-            draw_button(screen, start_button_rect, "Start Race", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+
+            races_text = f"Races: {selected_races}"
+            races_surf = font.render(races_text, True, WHITE)
+            screen.blit(races_surf, (CENTER_X + 70 - races_surf.get_width()//2, SCREEN_HEIGHT * 0.35))
+            draw_button(screen, races_minus_rect, "-", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+            draw_button(screen, races_plus_rect, "+", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+            
+            draw_button(screen, start_button_rect, "Start Series", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
             if sandbars or buoys:
                 draw_map(screen, player_boat, ai_boats, sandbars, buoys, -1, START_FINISH_LINE, MAP_RECT, WORLD_BOUNDS)
+
         elif game_state == GameState.RACING:
             draw_scrolling_water(screen, wave_layers, wave_offsets, deg_to_rad(wind_direction), dt)
             player_boat.draw_wake(screen, world_offset_x, world_offset_y)
@@ -330,8 +377,8 @@ def main():
             opt_text = font.render(f"Optimal Trim: {player_boat.optimal_sail_trim:.0f}", True, WHITE)
             screen.blit(opt_text, (SCREEN_WIDTH - 200, SCREEN_HEIGHT - 60))
 
-            lap_display = f"Lap: {current_lap}/{total_laps}" if race_started else "Cross Start Line"
-            lap_text = font.render(lap_display, True, WHITE)
+            race_info_text = f"Race {current_race}/{total_races} - Lap: {current_lap}/{total_laps}" if race_started else f"Race {current_race}/{total_races} - Cross Start Line"
+            lap_text = font.render(race_info_text, True, WHITE)
             screen.blit(lap_text, (CENTER_X - lap_text.get_width() // 2, 10))
             next_buoy_text = ""
             num_course_buoys = len(course_buoys_coords)
@@ -368,32 +415,55 @@ def main():
             map_next_buoy_highlight_index = course_buoy_list_start_index + next_buoy_index if race_started and next_buoy_index < num_course_buoys else -1
             draw_map(screen, player_boat, ai_boats, sandbars, buoys, map_next_buoy_highlight_index, START_FINISH_LINE, MAP_RECT, WORLD_BOUNDS)
 
-        elif game_state == GameState.FINISHED:
-             title_surf = title_font.render("Race Finished!", True, WHITE)
-             screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, SCREEN_HEIGHT * 0.1))
-             
-             # Player Times
-             total_time_surf = font.render(f"Your Total Time: {format_time(final_total_time)}", True, WHITE)
-             screen.blit(total_time_surf, (CENTER_X - total_time_surf.get_width()//2, SCREEN_HEIGHT * 0.2))
-             y_lap_offset = SCREEN_HEIGHT * 0.25
-             for i, l_time in enumerate(lap_times):
-                 lap_num = i + 1
-                 lap_time_surf = lap_font.render(f"Lap {lap_num}: {format_time(l_time)}", True, GRAY)
-                 screen.blit(lap_time_surf, (CENTER_X - lap_time_surf.get_width()//2, y_lap_offset))
-                 y_lap_offset += 25
+        elif game_state == GameState.RACE_RESULTS:
+            title_surf = title_font.render(f"Race {current_race} Results", True, WHITE)
+            screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, 20))
 
-             # AI Times
-             finished_ai_boats = sorted([b for b in ai_boats if b.is_finished], key=lambda x: x.finish_time)
-             y_ai_offset = y_lap_offset + 20
-             ai_title_surf = font.render("AI Results:", True, WHITE)
-             screen.blit(ai_title_surf, (CENTER_X - ai_title_surf.get_width() // 2, y_ai_offset))
-             y_ai_offset += 30
-             for i, ai in enumerate(finished_ai_boats):
-                 ai_time_surf = lap_font.render(f"AI {i + 1}: {format_time(ai.finish_time)}", True, ai.color)
-                 screen.blit(ai_time_surf, (CENTER_X - ai_time_surf.get_width() // 2, y_ai_offset))
-                 y_ai_offset += 25
+            # Display Race Results and Series Standings side-by-side
+            col1_x = 100
+            col2_x = SCREEN_WIDTH // 2 + 50
+            y_offset = 100
 
-             draw_button(screen, new_race_button_rect, "New Race Setup", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+            # Column 1: Race Results
+            results_title_surf = font.render("Race Results:", True, WHITE)
+            screen.blit(results_title_surf, (col1_x, y_offset)); y_offset += 30
+            for i, result in enumerate(race_results):
+                boat = result['boat']
+                points = POINTS_AWARDED[i] if i < len(POINTS_AWARDED) else 0
+                rank_surf = lap_font.render(f"{i+1}. {boat.name} - {format_time(result['time'])} (+{points} pts)", True, boat.color)
+                screen.blit(rank_surf, (col1_x + 20, y_offset)); y_offset += 25
+                for j, l_time in enumerate(result['laps']):
+                    lap_time_surf = lap_font.render(f"    Lap {j+1}: {format_time(l_time)}", True, GRAY)
+                    screen.blit(lap_time_surf, (col1_x + 30, y_offset)); y_offset += 20
+                y_offset += 10
+
+
+            # Column 2: Series Standings
+            y_offset = 100
+            standings_title_surf = font.render("Series Standings:", True, WHITE)
+            screen.blit(standings_title_surf, (col2_x, y_offset)); y_offset += 30
+            
+            sorted_standings = sorted(all_boats, key=lambda b: b.score, reverse=True)
+            for i, boat in enumerate(sorted_standings):
+                rank_surf = lap_font.render(f"{i+1}. {boat.name} - {boat.score} points", True, boat.color)
+                screen.blit(rank_surf, (col2_x + 20, y_offset)); y_offset += 25
+            
+            button_text = "Next Race" if current_race < total_races else "Final Results"
+            draw_button(screen, next_race_button_rect, button_text, button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+
+        elif game_state == GameState.SERIES_END:
+            title_surf = title_font.render("Final Series Standings", True, WHITE)
+            screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, 50))
+            
+            y_offset = 150
+            sorted_standings = sorted(all_boats, key=lambda b: b.score, reverse=True)
+            for i, boat in enumerate(sorted_standings):
+                rank_surf = font.render(f"{i+1}. {boat.name} - {boat.score} points", True, boat.color)
+                screen.blit(rank_surf, (CENTER_X - rank_surf.get_width() // 2, y_offset))
+                y_offset += 40
+
+            draw_button(screen, next_race_button_rect, "Start New Series", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+
 
         pygame.display.flip()
 

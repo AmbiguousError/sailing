@@ -41,7 +41,7 @@ class WakeParticle:
 
 class Boat:
     """Represents the player's sailing dinghy with improved physics."""
-    def __init__(self, x, y, boat_color=WHITE):
+    def __init__(self, x, y, name="Player", boat_color=WHITE):
         self.screen_x = x
         self.screen_y = y
         self.world_x = 0.0
@@ -56,6 +56,8 @@ class Boat:
         self.wind_effectiveness = 0.0
         self.optimal_sail_trim = 0.0
         self.on_sandbar = False
+        self.name = name
+        self.score = 0
         self.color = boat_color
         self.base_shape = [(20, 0), (-10, -7), (-15, 0), (-10, 7)]
         self.rotated_shape = self.base_shape[:]
@@ -65,6 +67,7 @@ class Boat:
         self.collision_radius = 15
         self.wake_particles = deque()
         self.time_since_last_wake = 0.0
+        self.last_line_crossing_time = 0.0
 
     def reset_position(self):
         self.world_x = 0.0
@@ -285,8 +288,8 @@ class Buoy:
 
 class AIBoat(Boat):
     """An AI-controlled boat that races against the player."""
-    def __init__(self, world_x, world_y, sailing_style, color):
-        super().__init__(0, 0, boat_color=color)
+    def __init__(self, world_x, world_y, name, sailing_style, color):
+        super().__init__(0, 0, name=name, boat_color=color)
         self.world_x = world_x
         self.world_y = world_y
         self.style = sailing_style
@@ -296,10 +299,11 @@ class AIBoat(Boat):
         self.race_started = False
         self.next_buoy_index = 0
         self.current_lap = 1
-        self.last_line_crossing_time = 0
         self.is_finished = False
         self.race_start_time = 0.0
         self.finish_time = 0.0
+        self.lap_times = []
+        self.lap_start_time = 0.0
 
         if self.style == SailingStyle.PERFECTIONIST:
             self.turn_rate_modifier = random.uniform(0.95, 1.05)
