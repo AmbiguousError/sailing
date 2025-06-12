@@ -298,6 +298,8 @@ class AIBoat(Boat):
         self.current_lap = 1
         self.last_line_crossing_time = 0
         self.is_finished = False
+        self.race_start_time = 0.0
+        self.finish_time = 0.0
 
         if self.style == SailingStyle.PERFECTIONIST:
             self.turn_rate_modifier = random.uniform(0.95, 1.05)

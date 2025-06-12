@@ -15,6 +15,34 @@ class GameState(Enum):
     RACING = auto()
     FINISHED = auto()
 
+def handle_boat_collision(boat1, boat2):
+    dist_sq = distance_sq((boat1.world_x, boat1.world_y), (boat2.world_x, boat2.world_y))
+    min_dist = boat1.collision_radius + boat2.collision_radius
+    if dist_sq < min_dist**2:
+        dist = math.sqrt(dist_sq)
+        overlap = min_dist - dist
+        
+        dx = boat2.world_x - boat1.world_x
+        dy = boat2.world_y - boat1.world_y
+        
+        # Normalize collision vector
+        if dist > 0:
+            nx = dx / dist
+            ny = dy / dist
+        else: # boats are at the exact same position
+            nx = 1.0
+            ny = 0.0
+
+        # Push boats apart
+        boat1.world_x -= nx * overlap * 0.5
+        boat1.world_y -= ny * overlap * 0.5
+        boat2.world_x += nx * overlap * 0.5
+        boat2.world_y += ny * overlap * 0.5
+
+        # Reduce speed
+        boat1.speed *= BOAT_COLLISION_SPEED_REDUCTION
+        boat2.speed *= BOAT_COLLISION_SPEED_REDUCTION
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -37,7 +65,7 @@ def main():
     start_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.6, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
     laps_minus_rect = pygame.Rect(CENTER_X - 60 - LAP_BUTTON_SIZE, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
     laps_plus_rect = pygame.Rect(CENTER_X + 60, SCREEN_HEIGHT * 0.45, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
-    new_race_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.7, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
+    new_race_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.8, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
 
     # Game State Variables
     game_state = GameState.SETUP
@@ -133,10 +161,10 @@ def main():
                 course_generated = True
         elif game_state == GameState.RACING:
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]: player_boat.turn(-1)
-            elif keys[pygame.K_RIGHT] or keys[pygame.K_d]: player_boat.turn(1)
-            if keys[pygame.K_UP] or keys[pygame.K_w]: player_boat.trim_sail(-1)
-            elif keys[pygame.K_DOWN] or keys[pygame.K_s]: player_boat.trim_sail(1)
+            if keys[pygame.K_LEFT]: player_boat.turn(-1)
+            elif keys[pygame.K_RIGHT]: player_boat.turn(1)
+            if keys[pygame.K_UP]: player_boat.trim_sail(-1)
+            elif keys[pygame.K_DOWN]: player_boat.trim_sail(1)
 
             current_ticks = pygame.time.get_ticks()
             if current_ticks - last_wind_update > WIND_UPDATE_INTERVAL:
@@ -180,8 +208,10 @@ def main():
                                 ai.race_started = True
                                 ai.current_lap = 1
                                 ai.next_buoy_index = 0
+                                ai.race_start_time = current_time_s
                             elif ai.race_started and ai.current_lap >= total_laps and ai.next_buoy_index >= len(course_buoys_coords):
                                 ai.is_finished = True
+                                ai.finish_time = current_time_s - ai.race_start_time
             
             # --- Player Update ---
             player_boat.on_sandbar = False
@@ -192,6 +222,13 @@ def main():
                     break
 
             player_boat.update(wind_speed, wind_direction, dt)
+            
+            # --- Boat Collisions ---
+            all_boats = [player_boat] + ai_boats
+            for i in range(len(all_boats)):
+                for j in range(i + 1, len(all_boats)):
+                    handle_boat_collision(all_boats[i], all_boats[j])
+
             world_offset_x = player_boat.world_x
             world_offset_y = player_boat.world_y
 
@@ -334,14 +371,28 @@ def main():
         elif game_state == GameState.FINISHED:
              title_surf = title_font.render("Race Finished!", True, WHITE)
              screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, SCREEN_HEIGHT * 0.1))
-             total_time_surf = font.render(f"Total Time: {format_time(final_total_time)}", True, WHITE)
-             screen.blit(total_time_surf, (CENTER_X - total_time_surf.get_width()//2, SCREEN_HEIGHT * 0.3))
-             y_lap_offset = SCREEN_HEIGHT * 0.4
+             
+             # Player Times
+             total_time_surf = font.render(f"Your Total Time: {format_time(final_total_time)}", True, WHITE)
+             screen.blit(total_time_surf, (CENTER_X - total_time_surf.get_width()//2, SCREEN_HEIGHT * 0.2))
+             y_lap_offset = SCREEN_HEIGHT * 0.25
              for i, l_time in enumerate(lap_times):
                  lap_num = i + 1
-                 lap_time_surf = lap_font.render(f"Lap {lap_num}: {format_time(l_time)}", True, WHITE)
+                 lap_time_surf = lap_font.render(f"Lap {lap_num}: {format_time(l_time)}", True, GRAY)
                  screen.blit(lap_time_surf, (CENTER_X - lap_time_surf.get_width()//2, y_lap_offset))
-                 y_lap_offset += 30
+                 y_lap_offset += 25
+
+             # AI Times
+             finished_ai_boats = sorted([b for b in ai_boats if b.is_finished], key=lambda x: x.finish_time)
+             y_ai_offset = y_lap_offset + 20
+             ai_title_surf = font.render("AI Results:", True, WHITE)
+             screen.blit(ai_title_surf, (CENTER_X - ai_title_surf.get_width() // 2, y_ai_offset))
+             y_ai_offset += 30
+             for i, ai in enumerate(finished_ai_boats):
+                 ai_time_surf = lap_font.render(f"AI {i + 1}: {format_time(ai.finish_time)}", True, ai.color)
+                 screen.blit(ai_time_surf, (CENTER_X - ai_time_surf.get_width() // 2, y_ai_offset))
+                 y_ai_offset += 25
+
              draw_button(screen, new_race_button_rect, "New Race Setup", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
 
         pygame.display.flip()
