@@ -25,11 +25,13 @@ class WakeParticle:
     def update(self, dt):
         self.lifetime -= dt
         return self.lifetime > 0
-    def draw(self, surface, offset_x, offset_y):
+    def draw(self, surface, offset_x, offset_y, view_center):
         if self.lifetime <= 0: return
-        screen_x = int(self.world_x - offset_x + CENTER_X)
-        screen_y = int(self.world_y - offset_y + CENTER_Y)
-        if not (0 < screen_x < SCREEN_WIDTH and 0 < screen_y < SCREEN_HEIGHT): return
+        screen_x = int(self.world_x - offset_x + view_center[0])
+        screen_y = int(self.world_y - offset_y + view_center[1])
+        
+        if not (0 < screen_x < surface.get_width() and 0 < screen_y < surface.get_height()): return
+
         life_ratio = max(0, self.lifetime / self.max_lifetime)
         current_size = int(lerp(WAKE_END_SIZE, WAKE_START_SIZE, life_ratio))
         current_alpha = int(lerp(0, 150, life_ratio))
@@ -68,6 +70,17 @@ class Boat:
         self.wake_particles = deque()
         self.time_since_last_wake = 0.0
         self.last_line_crossing_time = 0.0
+        
+        # Race progress attributes
+        self.race_started = False
+        self.is_finished = False
+        self.current_lap = 1
+        self.next_buoy_index = -1
+        self.lap_start_time = 0.0
+        self.race_start_time = 0.0
+        self.finish_time = 0.0
+        self.lap_times = []
+
 
     def reset_position(self):
         self.world_x = 0.0
@@ -144,10 +157,27 @@ class Boat:
         self.world_x += dx
         self.world_y += dy
 
-        # Visual Updates
-        self.rotate_and_position()
-        self.update_sail_curve(self.visual_sail_angle_rel)
+        # Visual Updates (will be called from main render loop)
         self.update_wake(dt)
+
+    def draw(self, surface):
+        self.rotate_and_position()
+        pygame.draw.polygon(surface, self.color, self.rotated_shape)
+        pygame.draw.lines(surface, BLACK, True, self.rotated_shape, 1)
+
+        self.update_sail_curve(self.visual_sail_angle_rel)
+        if self.optimal_sail_trim != 0 or self.wind_effectiveness > 0:
+            try:
+                optimal_abs_angle_rad = deg_to_rad(normalize_angle(self.heading + self.optimal_sail_trim))
+                mast_x, mast_y = self.mast_pos_abs
+                end_x = mast_x + math.cos(optimal_abs_angle_rad) * OPTIMAL_INDICATOR_LENGTH
+                end_y = mast_y + math.sin(optimal_abs_angle_rad) * OPTIMAL_INDICATOR_LENGTH
+                pygame.draw.line(surface, OPTIMAL_SAIL_COLOR[:3], (int(mast_x), int(mast_y)), (int(end_x), int(end_y)), 1)
+            except Exception:
+                pass # Ignore drawing errors
+        if len(self.sail_curve_points) >= 3:
+            pygame.draw.polygon(surface, SAIL_COLOR, self.sail_curve_points)
+            pygame.draw.lines(surface, GRAY, False, self.sail_curve_points, 1)
 
     def rotate_and_position(self):
         rad = deg_to_rad(self.heading)
@@ -193,6 +223,7 @@ class Boat:
                 particle_y = self.world_y + spawn_dy + rand_y
                 self.wake_particles.append(WakeParticle(particle_x, particle_y))
                 self.time_since_last_wake = 0.0
+        
         particles_to_keep = deque()
         while self.wake_particles:
              particle = self.wake_particles.popleft()
@@ -200,25 +231,9 @@ class Boat:
                  particles_to_keep.append(particle)
         self.wake_particles = particles_to_keep
 
-    def draw(self, surface):
-        pygame.draw.polygon(surface, self.color, self.rotated_shape)
-        pygame.draw.lines(surface, BLACK, True, self.rotated_shape, 1)
-        if self.optimal_sail_trim != 0 or self.wind_effectiveness > 0:
-            try:
-                optimal_abs_angle_rad = deg_to_rad(normalize_angle(self.heading + self.optimal_sail_trim))
-                mast_x, mast_y = self.mast_pos_abs
-                end_x = mast_x + math.cos(optimal_abs_angle_rad) * OPTIMAL_INDICATOR_LENGTH
-                end_y = mast_y + math.sin(optimal_abs_angle_rad) * OPTIMAL_INDICATOR_LENGTH
-                pygame.draw.line(surface, OPTIMAL_SAIL_COLOR[:3], (int(mast_x), int(mast_y)), (int(end_x), int(end_y)), 1)
-            except Exception:
-                pass # Ignore drawing errors
-        if len(self.sail_curve_points) >= 3:
-            pygame.draw.polygon(surface, SAIL_COLOR, self.sail_curve_points)
-            pygame.draw.lines(surface, GRAY, False, self.sail_curve_points, 1)
-
-    def draw_wake(self, surface, offset_x, offset_y):
+    def draw_wake(self, surface, offset_x, offset_y, view_center):
          for particle in self.wake_particles:
-             particle.draw(surface, offset_x, offset_y)
+             particle.draw(surface, offset_x, offset_y, view_center)
 
     def get_world_collision_rect(self):
          return pygame.Rect(self.world_x - self.collision_radius, self.world_y - self.collision_radius, self.collision_radius * 2, self.collision_radius * 2)
@@ -234,6 +249,22 @@ class Sandbar:
         self.points_rel = self._generate_random_points(size)
         self.points_world = [(x + world_x, y + world_y) for x, y in self.points_rel]
         self.rect = self._calculate_bounding_rect(self.points_world)
+        self._initialize_waves()
+
+    def _initialize_waves(self):
+        """Creates data for the shimmering waves over the sandbar."""
+        w, h = self.rect.width + 100, self.rect.height + 100
+        if w <= 100 or h <= 100: # Avoid creating empty surfaces if sandbar is tiny
+            self.wave_layers = []
+            self.wave_offsets = []
+            return
+            
+        self.wave_layers = [
+            create_wave_layer(int(w), int(h), int(WAVE_DENSITY / 4), 80, 1),
+            create_wave_layer(int(w), int(h), int(WAVE_DENSITY / 4), 90, 2)
+        ]
+        self.wave_offsets = [[random.uniform(0, w), random.uniform(0, h)] for _ in self.wave_layers]
+
 
     def _generate_random_points(self, size):
         points = []
@@ -258,13 +289,38 @@ class Sandbar:
         max_y = max(p[1] for p in points_list)
         return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
 
-    def draw(self, surface, offset_x, offset_y):
-        screen_points = [(int(px - offset_x + CENTER_X), int(py - offset_y + CENTER_Y)) for px, py in self.points_world]
-        screen_rect = self.rect.move(-offset_x + CENTER_X, -offset_y + CENTER_Y)
-        if screen_rect.colliderect(surface.get_rect()):
-            if len(screen_points) > 2:
-                pygame.draw.polygon(surface, self.color, screen_points)
-                pygame.draw.polygon(surface, self.border_color, screen_points, 2)
+    def draw(self, surface, offset_x, offset_y, view_center, dt, wind_direction):
+        screen_rect = self.rect.move(-offset_x + view_center[0], -offset_y + view_center[1])
+        
+        if not screen_rect.colliderect(surface.get_rect()):
+            return
+
+        screen_points = [(int(px - offset_x + view_center[0]), int(py - offset_y + view_center[1])) for px, py in self.points_world]
+        
+        # 1. Draw the base sand color
+        pygame.draw.polygon(surface, self.color, screen_points)
+
+        # 2. Create a temporary surface for the water effects
+        water_surface = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
+        water_surface.fill((*BLUE, 150))
+
+        # 3. Draw scrolling waves onto this temporary surface
+        draw_scrolling_water(water_surface, self.wave_layers, self.wave_offsets, deg_to_rad(wind_direction), dt)
+
+        # 4. Create a mask from the sandbar's shape to clip the water effects
+        mask_surface = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
+        local_points = [(p[0] - screen_rect.left, p[1] - screen_rect.top) for p in screen_points]
+        pygame.draw.polygon(mask_surface, (255, 255, 255, 255), local_points)
+
+        # 5. Apply the mask to the water effects surface
+        water_surface.blit(mask_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        # 6. Blit the final masked water effect onto the main screen
+        surface.blit(water_surface, screen_rect.topleft)
+
+        # 7. Draw the border on top
+        pygame.draw.polygon(surface, self.border_color, screen_points, 2)
+
 
 class Buoy:
     """Represents a course marker buoy."""
@@ -276,10 +332,10 @@ class Buoy:
         self.is_gate = is_gate
         self.color = START_FINISH_BUOY_COLOR if is_gate else BUOY_COLOR
 
-    def draw(self, surface, offset_x, offset_y, is_next):
-        screen_x = int(self.world_x - offset_x + CENTER_X)
-        screen_y = int(self.world_y - offset_y + CENTER_Y)
-        if -self.radius < screen_x < SCREEN_WIDTH + self.radius and -self.radius < screen_y < SCREEN_HEIGHT + self.radius:
+    def draw(self, surface, offset_x, offset_y, is_next, view_center):
+        screen_x = int(self.world_x - offset_x + view_center[0])
+        screen_y = int(self.world_y - offset_y + view_center[1])
+        if -self.radius < screen_x < surface.get_width() + self.radius and -self.radius < screen_y < surface.get_height() + self.radius:
             color_to_use = self.color
             if is_next and not self.is_gate:
                 color_to_use = NEXT_BUOY_INDICATOR_COLOR
@@ -294,16 +350,8 @@ class AIBoat(Boat):
         self.world_y = world_y
         self.style = sailing_style
         self.tack_decision_time = 0
-
-        # AI-specific race progress
-        self.race_started = False
-        self.next_buoy_index = 0
-        self.current_lap = 1
-        self.is_finished = False
-        self.race_start_time = 0.0
-        self.finish_time = 0.0
-        self.lap_times = []
-        self.lap_start_time = 0.0
+        self.time_at_current_buoy = 0.0
+        self.last_buoy_index = -1
 
         if self.style == SailingStyle.PERFECTIONIST:
             self.turn_rate_modifier = random.uniform(1.0, 1.1)
@@ -332,31 +380,43 @@ class AIBoat(Boat):
             self.tack_anticipation = 0
 
     def ai_update(self, wind_speed, wind_direction, course_buoys, start_finish_line, dt):
-        """The brain of the AI boat."""
+        """The brain of the AI boat. Sets rudder and sail intentions."""
         if self.is_finished:
             self.speed *= 0.98
-            super().update(0, 0, dt)
             return
+
+        # Update timer for current buoy to detect if stuck
+        if self.next_buoy_index != self.last_buoy_index:
+            self.time_at_current_buoy = 0.0
+            self.last_buoy_index = self.next_buoy_index
+        else:
+            self.time_at_current_buoy += dt
+
+        # Get unstuck logic
+        if self.time_at_current_buoy > 20.0:
+            wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+            if wind_angle_rel_boat > 0: self.turn(-1.5)
+            else: self.turn(1.5)
+            self.time_at_current_buoy = 0
+            return 
+
+        # Tether to keep AI from sailing off the map
+        dist_from_center_sq = self.world_x**2 + self.world_y**2
+        if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2:
+            target = (0, 0)
+        else:
+            target = self.get_current_target(course_buoys, start_finish_line)
 
         # Stall recovery logic
         if self.speed < 1.5 and self.wind_effectiveness < 0.1:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
-            # If pointing towards the wind, turn away sharply
             if abs(wind_angle_rel_boat) < MIN_SAILING_ANGLE + 10:
-                # Turn away from the wind very aggressively
-                if wind_angle_rel_boat > 0:
-                    self.turn(-2.0) # Turn port
-                else:
-                    self.turn(2.0) # Turn starboard
-                
-                # Ease sails completely
-                self.sail_angle_rel = MAX_SAIL_ANGLE_REL 
-                super().update(wind_speed, wind_direction, dt)
+                if wind_angle_rel_boat > 0: self.turn(-2.0)
+                else: self.turn(2.0)
+                self.sail_angle_rel = MAX_SAIL_ANGLE_REL
                 return
 
-        target = self.get_current_target(course_buoys, start_finish_line)
         if not target:
-            super().update(0, 0, dt)
             return
 
         perceived_wind_direction = normalize_angle(wind_direction + random.uniform(-5, 5))
@@ -371,60 +431,40 @@ class AIBoat(Boat):
 
         self.ai_trim_sails(perceived_wind_direction, dt)
 
-        super().update(wind_speed, wind_direction, dt)
 
     def get_current_target(self, course_buoys, start_finish_line):
-        """Determines the AI's next target coordinates, can be slightly off."""
         if self.next_buoy_index >= 0 and self.next_buoy_index < len(course_buoys):
             base_target = course_buoys[self.next_buoy_index]
         else:
             base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
                            (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
-
         offset_factor = 1.0
-        if self.style == SailingStyle.CAUTIOUS:
-            offset_factor = 1.5
-        elif self.style == SailingStyle.ERRATIC:
-            offset_factor = 2.0
-
+        if self.style == SailingStyle.CAUTIOUS: offset_factor = 1.5
+        elif self.style == SailingStyle.ERRATIC: offset_factor = 2.0
         offset_x = random.uniform(-10 * offset_factor, 10 * offset_factor)
         offset_y = random.uniform(-10 * offset_factor, 10 * offset_factor)
         return (base_target[0] + offset_x, base_target[1] + offset_y)
 
     def calculate_desired_heading(self, target_pos, wind_direction):
-        """Calculates the best heading to the target, avoiding the no-go zone, with variations."""
         target_dx = target_pos[0] - self.world_x
         target_dy = target_pos[1] - self.world_y
         direct_heading_to_target = normalize_angle(rad_to_deg(math.atan2(target_dy, target_dx)))
-
         wind_angle_diff = abs(angle_difference(direct_heading_to_target, wind_direction))
 
         if wind_angle_diff < MIN_SAILING_ANGLE + self.tack_anticipation:
-            # Target is in the no-go zone, need to tack.
             tack_angle = MIN_SAILING_ANGLE + random.uniform(5, 20)
-
-            # Determine which tack is better by checking which is closer to the target
             port_tack_heading = normalize_angle(wind_direction + tack_angle)
             starboard_tack_heading = normalize_angle(wind_direction - tack_angle)
-
             port_diff = abs(angle_difference(port_tack_heading, direct_heading_to_target))
             starboard_diff = abs(angle_difference(starboard_tack_heading, direct_heading_to_target))
-
-            if port_diff < starboard_diff:
-                return normalize_angle(port_tack_heading + random.uniform(-3, 3))
-            else:
-                return normalize_angle(starboard_tack_heading + random.uniform(-3, 3))
+            return normalize_angle((port_tack_heading if port_diff < starboard_diff else starboard_tack_heading) + random.uniform(-3, 3))
         else:
-             # Target is not in the no-go zone, sail directly towards it with some error.
             overshoot = 0
-            if self.style == SailingStyle.AGGRESSIVE:
-                overshoot = random.uniform(-2, 5)
-            elif self.style == SailingStyle.ERRATIC:
-                overshoot = random.uniform(-10, 10)
+            if self.style == SailingStyle.AGGRESSIVE: overshoot = random.uniform(-2, 5)
+            elif self.style == SailingStyle.ERRATIC: overshoot = random.uniform(-10, 10)
             return normalize_angle(direct_heading_to_target + overshoot)
 
     def ai_trim_sails(self, wind_direction, dt):
-        """Automatically trims the sails based on the sailing style with more error."""
         wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
         optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90)
         optimal_trim = max(-MAX_SAIL_ANGLE_REL, min(MAX_SAIL_ANGLE_REL, optimal_trim))
