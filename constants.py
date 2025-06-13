@@ -12,33 +12,42 @@ WORLD_BOUNDS = 2000
 
 # --- Colors ---
 WHITE = (255, 255, 255)
-PLAYER2_COLOR = (255, 165, 0) # Orange
+PLAYER2_COLOR = pygame.Color("#F4A261") # Sandy Orange
 BLACK = (0, 0, 0)
-BLUE = (0, 105, 148)  # Base ocean color
-LIGHT_BLUE = (100, 150, 200)
-SAND_COLOR = (237, 201, 175) # A lighter sand color
-DARK_SAND_COLOR = (190, 170, 130)
-RED = (255, 0, 0)
-YELLOW = (255, 255, 0)
+RED = (231, 111, 81)
+YELLOW = (233, 196, 106)
 GRAY = (150, 150, 150)
 OPTIMAL_SAIL_COLOR = (0, 200, 255, 150)
-SAIL_COLOR = (230, 230, 230)
+SAIL_COLOR = (245, 245, 245)
 WAKE_COLOR = (200, 220, 255)
-MAP_BG_COLOR = (50, 50, 50, 180)
+MAP_BG_COLOR = (0, 69, 107, 180) # Darker sea blue for UI
 MAP_BORDER_COLOR = (200, 200, 200)
-MAP_BOAT_COLOR = (0, 200, 255)
-BUTTON_COLOR = (100, 100, 100)
-BUTTON_HOVER_COLOR = (150, 150, 150)
+MAP_BOAT_COLOR = (233, 196, 106)
+BUTTON_COLOR = pygame.Color("#264653")
+BUTTON_HOVER_COLOR = pygame.Color("#2A9D8F")
 BUTTON_TEXT_COLOR = WHITE
-BUOY_COLOR = (255, 100, 0)
-START_FINISH_BUOY_COLOR = (200, 200, 0)
+BUOY_COLOR = pygame.Color("#E76F51")
+START_FINISH_BUOY_COLOR = pygame.Color("#F4A261")
 START_FINISH_LINE_COLOR = WHITE
 NEXT_BUOY_INDICATOR_COLOR = (0, 255, 0)
 
-# Colors for depth contours
-DARK_BLUE = pygame.Color("#003264") # Deepest ocean for the base fill
-DEPTH_COLORS = [pygame.Color("#004182"), pygame.Color("#0050A0"), pygame.Color("#0069B4")]
-SHALLOW_COLORS = [pygame.Color("#2A9D8F"), pygame.Color("#E9C46A")]
+# Ocean-themed pastel palette
+BLUE = pygame.Color("#A8DADC") # Lightest water
+DARK_BLUE = pygame.Color("#1D3557") # Deepest ocean for the base fill
+DEPTH_COLORS = [pygame.Color("#457B9D"), pygame.Color("#A8DADC")]
+SHALLOW_COLORS = [pygame.Color("#F1FAEE")]
+SAND_COLOR = pygame.Color("#F1FAEE")
+DARK_SAND_COLOR = pygame.Color("#A8DADC")
+
+# Boat Colors (Pastel)
+AI_BOAT_COLORS = [
+    pygame.Color("#E63946"), # Red
+    pygame.Color("#F4A261"), # Orange
+    pygame.Color("#2A9D8F"), # Green
+    pygame.Color("#457B9D"), # Blue
+    pygame.Color("#F1FAEE"), # Off-white
+    pygame.Color("#A8DADC"), # Light Blue
+]
 
 
 # --- Boat Properties ---
@@ -55,7 +64,6 @@ SAIL_LENGTH = 35
 SAIL_MAX_CURVE = 8
 MIN_SAILING_ANGLE = 45
 OPTIMAL_INDICATOR_LENGTH = 25
-AI_BOAT_COLORS = [(100, 100, 255), (100, 255, 100), (255, 100, 100), (255, 255, 100), (255, 100, 255), (100, 255, 255)]
 NUM_AI_BOATS = 4
 BOAT_COLLISION_SPEED_REDUCTION = 0.95
 
