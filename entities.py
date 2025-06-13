@@ -239,7 +239,7 @@ class Boat:
          return pygame.Rect(self.world_x - self.collision_radius, self.world_y - self.collision_radius, self.collision_radius * 2, self.collision_radius * 2)
 
 class Sandbar:
-    """Represents a static sandbar obstacle with a random polygon shape."""
+    """Represents a static sandbar obstacle. Visuals are handled by the terrain map."""
     def __init__(self, world_x, world_y, size):
         self.world_x = world_x
         self.world_y = world_y
@@ -249,22 +249,6 @@ class Sandbar:
         self.points_rel = self._generate_random_points(size)
         self.points_world = [(x + world_x, y + world_y) for x, y in self.points_rel]
         self.rect = self._calculate_bounding_rect(self.points_world)
-        self._initialize_waves()
-
-    def _initialize_waves(self):
-        """Creates data for the shimmering waves over the sandbar."""
-        w, h = self.rect.width + 100, self.rect.height + 100
-        if w <= 100 or h <= 100: # Avoid creating empty surfaces if sandbar is tiny
-            self.wave_layers = []
-            self.wave_offsets = []
-            return
-            
-        self.wave_layers = [
-            create_wave_layer(int(w), int(h), int(WAVE_DENSITY / 4), 80, 1),
-            create_wave_layer(int(w), int(h), int(WAVE_DENSITY / 4), 90, 2)
-        ]
-        self.wave_offsets = [[random.uniform(0, w), random.uniform(0, h)] for _ in self.wave_layers]
-
 
     def _generate_random_points(self, size):
         points = []
@@ -288,38 +272,6 @@ class Sandbar:
         min_y = min(p[1] for p in points_list)
         max_y = max(p[1] for p in points_list)
         return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
-
-    def draw(self, surface, offset_x, offset_y, view_center, dt, wind_direction):
-        screen_rect = self.rect.move(-offset_x + view_center[0], -offset_y + view_center[1])
-        
-        if not screen_rect.colliderect(surface.get_rect()):
-            return
-
-        screen_points = [(int(px - offset_x + view_center[0]), int(py - offset_y + view_center[1])) for px, py in self.points_world]
-        
-        # 1. Draw the base sand color
-        pygame.draw.polygon(surface, self.color, screen_points)
-
-        # 2. Create a temporary surface for the water effects
-        water_surface = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
-        water_surface.fill((*BLUE, 150))
-
-        # 3. Draw scrolling waves onto this temporary surface
-        draw_scrolling_water(water_surface, self.wave_layers, self.wave_offsets, deg_to_rad(wind_direction), dt)
-
-        # 4. Create a mask from the sandbar's shape to clip the water effects
-        mask_surface = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
-        local_points = [(p[0] - screen_rect.left, p[1] - screen_rect.top) for p in screen_points]
-        pygame.draw.polygon(mask_surface, (255, 255, 255, 255), local_points)
-
-        # 5. Apply the mask to the water effects surface
-        water_surface.blit(mask_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-
-        # 6. Blit the final masked water effect onto the main screen
-        surface.blit(water_surface, screen_rect.topleft)
-
-        # 7. Draw the border on top
-        pygame.draw.polygon(surface, self.border_color, screen_points, 2)
 
 
 class Buoy:

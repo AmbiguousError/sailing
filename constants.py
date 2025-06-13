@@ -1,6 +1,7 @@
 # constants.py
 
 import pygame
+import math
 
 # --- Screen & World ---
 SCREEN_WIDTH = 1280
@@ -13,10 +14,9 @@ WORLD_BOUNDS = 2000
 WHITE = (255, 255, 255)
 PLAYER2_COLOR = (255, 165, 0) # Orange
 BLACK = (0, 0, 0)
-BLUE = (0, 105, 148)  # Ocean blue
-DARK_BLUE = (0, 50, 100)
+BLUE = (0, 105, 148)  # Base ocean color
 LIGHT_BLUE = (100, 150, 200)
-SAND_COLOR = (230, 210, 170)
+SAND_COLOR = (237, 201, 175) # A lighter sand color
 DARK_SAND_COLOR = (190, 170, 130)
 RED = (255, 0, 0)
 YELLOW = (255, 255, 0)
@@ -34,6 +34,12 @@ BUOY_COLOR = (255, 100, 0)
 START_FINISH_BUOY_COLOR = (200, 200, 0)
 START_FINISH_LINE_COLOR = WHITE
 NEXT_BUOY_INDICATOR_COLOR = (0, 255, 0)
+
+# Colors for depth contours
+DARK_BLUE = pygame.Color("#003264") # Deepest ocean for the base fill
+DEPTH_COLORS = [pygame.Color("#004182"), pygame.Color("#0050A0"), pygame.Color("#0069B4")]
+SHALLOW_COLORS = [pygame.Color("#2A9D8F"), pygame.Color("#E9C46A")]
+
 
 # --- Boat Properties ---
 BOAT_TURN_SPEED = 2.0
@@ -62,10 +68,10 @@ WIND_UPDATE_INTERVAL = 200
 
 # --- Environment Properties ---
 NUM_WAVE_LAYERS = 3
-WAVE_LAYER_ALPHA = 100
-WAVE_LINE_THICKNESS = 2
+WAVE_LAYER_ALPHA = 40 # Reduced alpha for subtlety
+WAVE_LINE_THICKNESS = 1
 WAVE_SCROLL_SPEED_BASE = [0.4, 0.6, 0.8]
-WAVE_DENSITY = 50
+WAVE_DENSITY = 100
 NUM_SANDBARS = 15
 MIN_SANDBAR_SIZE = 60
 MAX_SANDBAR_SIZE = 200
