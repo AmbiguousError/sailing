@@ -311,6 +311,8 @@ class AIBoat(Boat):
         self.world_y = world_y
         self.style = sailing_style
         self.tack_decision_time = 0
+        self.time_at_current_buoy = 0.0
+        self.last_buoy_index = -1
 
         if self.style == SailingStyle.PERFECTIONIST:
             self.turn_rate_modifier = random.uniform(1.0, 1.1)
@@ -339,38 +341,46 @@ class AIBoat(Boat):
             self.tack_anticipation = 0
 
     def ai_update(self, wind_speed, wind_direction, course_buoys, start_finish_line, dt):
-        """The brain of the AI boat."""
+        """The brain of the AI boat. Sets rudder and sail intentions."""
         if self.is_finished:
-            self.speed *= 0.98
-            super().update(0, 0, dt)
+            self.speed *= 0.98 # Drift to a stop
             return
 
-        # Add a check to prevent sailing too far off map
+        # Update timer for current buoy to detect if stuck
+        if self.next_buoy_index != self.last_buoy_index:
+            self.time_at_current_buoy = 0.0
+            self.last_buoy_index = self.next_buoy_index
+        else:
+            self.time_at_current_buoy += dt
+
+        # Get unstuck logic
+        if self.time_at_current_buoy > 20.0: # 20 second timeout
+            # AI is stuck. Force a tack by turning hard away from the wind.
+            wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+            if wind_angle_rel_boat > 0:
+                self.turn(-1.5) # Turn away from wind
+            else:
+                self.turn(1.5) # Turn away from wind
+            self.time_at_current_buoy = 0 # Reset timer
+            return 
+
+        # Tether to keep AI from sailing off the map
         dist_from_center_sq = self.world_x**2 + self.world_y**2
-        if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2: # If way outside world bounds
-            # Create a temporary target to get back towards the action
-            target = (0, 0) 
+        if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2:
+            target = (0, 0)
         else:
             target = self.get_current_target(course_buoys, start_finish_line)
 
         # Stall recovery logic
         if self.speed < 1.5 and self.wind_effectiveness < 0.1:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
-            # If pointing towards the wind, turn away sharply
             if abs(wind_angle_rel_boat) < MIN_SAILING_ANGLE + 10:
-                # Turn away from the wind very aggressively
-                if wind_angle_rel_boat > 0:
-                    self.turn(-2.0) # Turn port
-                else:
-                    self.turn(2.0) # Turn starboard
-                
-                # Ease sails completely
-                self.sail_angle_rel = MAX_SAIL_ANGLE_REL 
-                super().update(wind_speed, wind_direction, dt)
+                if wind_angle_rel_boat > 0: self.turn(-2.0)
+                else: self.turn(2.0)
+                self.sail_angle_rel = MAX_SAIL_ANGLE_REL
                 return
 
         if not target:
-            super().update(0, 0, dt)
             return
 
         perceived_wind_direction = normalize_angle(wind_direction + random.uniform(-5, 5))
@@ -385,7 +395,6 @@ class AIBoat(Boat):
 
         self.ai_trim_sails(perceived_wind_direction, dt)
 
-        super().update(wind_speed, wind_direction, dt)
 
     def get_current_target(self, course_buoys, start_finish_line):
         if self.next_buoy_index >= 0 and self.next_buoy_index < len(course_buoys):

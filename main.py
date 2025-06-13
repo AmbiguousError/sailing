@@ -9,7 +9,7 @@ from constants import *
 from utils import *
 from entities import Boat, Buoy, AIBoat, SailingStyle
 from course import generate_random_buoys, generate_random_sandbars
-from graphics import draw_scrolling_water, draw_map, draw_button, create_wave_layer
+from graphics import draw_scrolling_water, draw_map, draw_button, create_wave_layer, draw_wind_gauge
 
 class GameState(Enum):
     SETUP = auto()
@@ -80,9 +80,9 @@ def draw_hud(surface, font, lap_font, boat, race_info, num_course_buoys):
     """Draws the HUD for a single boat on the given surface."""
     current_time_s = pygame.time.get_ticks() / 1000.0
     
-    # Wind and Boat Info
-    wind_text = font.render(f"Wind: {race_info['wind_speed']:.1f} @ {race_info['wind_dir']:.0f} deg", True, WHITE)
-    surface.blit(wind_text, (10, 10))
+    # Boat Info
+    wind_text = font.render(f"Wind Speed: {race_info['wind_speed']:.1f}", True, WHITE)
+    surface.blit(wind_text, (10, surface.get_height() - 85))
     speed_text = font.render(f"Speed: {boat.speed:.1f}", True, WHITE)
     surface.blit(speed_text, (10, surface.get_height() - 60))
     sail_text = font.render(f"Sail Trim: {boat.sail_angle_rel:.0f}", True, WHITE)
@@ -295,11 +295,14 @@ def main():
 
             # Update all boats
             for boat in all_boats:
+                # Set intentions for AI boats
                 if isinstance(boat, AIBoat):
-                     boat.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt)
-                else: # Player boat
-                    boat.update(wind_speed, wind_direction, dt)
+                    boat.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt)
                 
+                # Update physics and position for ALL boats
+                boat.update(wind_speed, wind_direction, dt)
+                
+                # Check sandbar collision for ALL boats
                 boat.on_sandbar = False
                 for sandbar in sandbars:
                     if boat.get_world_collision_rect().colliderect(sandbar.rect):
@@ -403,6 +406,9 @@ def main():
                 
                 draw_map(screen, player1_boat, ai_boats, sandbars, buoys, player1_boat.next_buoy_index, START_FINISH_LINE, MAP_RECT_P1, WORLD_BOUNDS, players)
                 draw_map(screen, player2_boat, ai_boats, sandbars, buoys, player2_boat.next_buoy_index, START_FINISH_LINE, MAP_RECT_P2, WORLD_BOUNDS, players)
+
+            # Draw shared wind gauge for both modes
+            draw_wind_gauge(screen, wind_direction, WIND_GAUGE_POS, WIND_GAUGE_RADIUS, lap_font)
 
         elif game_state == GameState.RACE_RESULTS:
             title_surf = title_font.render(f"Race {current_race} of {total_races} Results", True, WHITE)

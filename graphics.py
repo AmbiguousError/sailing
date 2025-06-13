@@ -47,6 +47,30 @@ def draw_scrolling_water(surface, layers, offsets, wind_direction_rad, dt):
              for col in range(int(start_x / w) -1, int((surface.get_width() - start_x) / w) + 2):
                  surface.blit(layer, (start_x + col * w, start_y + row * h))
 
+def draw_wind_gauge(surface, wind_direction, position, radius, font):
+    """Draws a compass-like gauge for the wind direction."""
+    # Draw background
+    pygame.draw.circle(surface, MAP_BG_COLOR, position, radius)
+    pygame.draw.circle(surface, MAP_BORDER_COLOR, position, radius, 2)
+
+    # Draw cardinal directions
+    cardinals = {'N': -90, 'E': 0, 'S': 90, 'W': 180}
+    for direction, angle in cardinals.items():
+        angle_rad = deg_to_rad(angle)
+        text_pos_x = position[0] + math.cos(angle_rad) * (radius - 10)
+        text_pos_y = position[1] + math.sin(angle_rad) * (radius - 10)
+        text_surf = font.render(direction, True, WHITE)
+        text_rect = text_surf.get_rect(center=(text_pos_x, text_pos_y))
+        surface.blit(text_surf, text_rect)
+
+    # Draw wind needle
+    wind_rad = deg_to_rad(wind_direction)
+    end_x = position[0] + math.cos(wind_rad) * (radius * 0.8)
+    end_y = position[1] + math.sin(wind_rad) * (radius * 0.8)
+    pygame.draw.line(surface, RED, position, (end_x, end_y), 3)
+    pygame.draw.circle(surface, BLACK, position, 3)
+
+
 def draw_map(surface, boat, ai_boats, sandbars, buoys, next_buoy_index, start_finish_line, map_rect, world_bounds, players):
     """Draws the minimap including the course."""
     map_surface = pygame.Surface(map_rect.size, pygame.SRCALPHA)
