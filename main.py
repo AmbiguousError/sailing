@@ -2,6 +2,7 @@
 
 import pygame
 import random
+import math
 from enum import Enum, auto
 
 from constants import *
@@ -94,7 +95,6 @@ def main():
     world_offset_y = 0.0
     wave_layers = [create_wave_layer(SCREEN_WIDTH + 100, SCREEN_HEIGHT + 100, WAVE_DENSITY * (i+1)) for i in range(NUM_WAVE_LAYERS)]
     wave_offsets = [[0.0, 0.0] for _ in range(NUM_WAVE_LAYERS)]
-    course_generated = False
     
     all_boats = [player_boat]
     
@@ -117,16 +117,27 @@ def main():
         start_new_race()
 
     def start_new_race():
-        nonlocal course_generated, race_started, race_finished, next_buoy_index
+        nonlocal race_started, race_finished, next_buoy_index
         nonlocal lap_times, final_total_time, wind_direction
         nonlocal player_finish_time_s, race_end_timer_started, current_lap
-        
+        nonlocal course_buoys_coords, sandbars, buoys
+
         print(f"--- Starting Race {current_race}/{total_races} ---")
+        
+        # Generate new course for the race
+        wind_direction = random.uniform(0, 360)
+        course_buoys_coords = generate_random_buoys(NUM_COURSE_BUOYS)
+        sandbars = generate_random_sandbars(NUM_SANDBARS, course_buoys_coords)
+        buoys = []
+        buoys.append(Buoy(START_FINISH_LINE[0][0], START_FINISH_LINE[0][1], -1, is_gate=True))
+        buoys.append(Buoy(START_FINISH_LINE[1][0], START_FINISH_LINE[1][1], -1, is_gate=True))
+        for i, (bx, by) in enumerate(course_buoys_coords):
+            buoys.append(Buoy(bx, by, i))
 
         # Reset race state for all boats
         for i, boat in enumerate(all_boats):
             boat.reset_position()
-            start_x = -50 - (i * 25)
+            start_x = -150 - (i * 25)
             start_y = random.uniform(-100, 100)
             boat.world_x, boat.world_y = start_x, start_y
             boat.last_line_crossing_time = -LINE_CROSSING_DEBOUNCE
@@ -147,8 +158,6 @@ def main():
         final_total_time = 0.0
         player_finish_time_s = None
         race_end_timer_started = False
-        
-        course_generated = False
 
 
     # --- Main Loop ---
@@ -162,6 +171,15 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             if game_state == GameState.SERIES_SETUP:
+                if not buoys: # Generate a preview course if one doesn't exist
+                    wind_direction = random.uniform(0, 360)
+                    course_buoys_coords = generate_random_buoys(NUM_COURSE_BUOYS)
+                    sandbars = generate_random_sandbars(NUM_SANDBARS, course_buoys_coords)
+                    buoys.append(Buoy(START_FINISH_LINE[0][0], START_FINISH_LINE[0][1], -1, is_gate=True))
+                    buoys.append(Buoy(START_FINISH_LINE[1][0], START_FINISH_LINE[1][1], -1, is_gate=True))
+                    for i, (bx, by) in enumerate(course_buoys_coords):
+                        buoys.append(Buoy(bx, by, i))
+
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if laps_minus_rect.collidepoint(event.pos): selected_laps = max(1, selected_laps - 1)
                     elif laps_plus_rect.collidepoint(event.pos): selected_laps = min(10, selected_laps + 1)
@@ -187,19 +205,11 @@ def main():
                                  game_state = GameState.SERIES_END
                          elif game_state == GameState.SERIES_END:
                              game_state = GameState.SERIES_SETUP
+                             buoys.clear() # Clear course for new setup
 
 
         if game_state == GameState.SERIES_SETUP:
-            if not course_generated:
-                wind_direction = random.uniform(0, 360)
-                course_buoys_coords = generate_random_buoys(NUM_COURSE_BUOYS)
-                sandbars = generate_random_sandbars(NUM_SANDBARS, course_buoys_coords)
-                buoys = []
-                buoys.append(Buoy(START_FINISH_LINE[0][0], START_FINISH_LINE[0][1], -1, is_gate=True))
-                buoys.append(Buoy(START_FINISH_LINE[1][0], START_FINISH_LINE[1][1], -1, is_gate=True))
-                for i, (bx, by) in enumerate(course_buoys_coords):
-                    buoys.append(Buoy(bx, by, i))
-                course_generated = True
+            pass # Logic is now event-driven or handled in the drawing section
 
         elif game_state == GameState.RACING:
             keys = pygame.key.get_pressed()
@@ -265,6 +275,7 @@ def main():
                             ai.race_started = True
                             ai.race_start_time = current_time_s
                             ai.lap_start_time = current_time_s
+                            ai.next_buoy_index = 0
                         elif ai.current_lap >= total_laps and ai.next_buoy_index >= num_course_buoys:
                             if not ai.is_finished:
                                 ai.is_finished = True

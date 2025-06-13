@@ -86,7 +86,7 @@ def draw_map(surface, boat, ai_boats, sandbars, buoys, next_buoy_index, start_fi
         ai_map_x = map_rect.centerx + ai_boat.world_x * MAP_WORLD_SCALE_X
         ai_map_y = map_rect.centery + ai_boat.world_y * MAP_WORLD_SCALE_Y
         if map_rect.collidepoint(ai_map_x, ai_map_y):
-            pygame.draw.circle(surface, MAP_AI_BOAT_COLOR, (int(ai_map_x), int(ai_map_y)), 2)
+            pygame.draw.circle(surface, ai_boat.color, (int(ai_map_x), int(ai_map_y)), 2)
 
     # Player Boat
     boat_map_x = map_rect.centerx + boat.world_x * MAP_WORLD_SCALE_X

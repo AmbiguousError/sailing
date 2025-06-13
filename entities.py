@@ -306,25 +306,25 @@ class AIBoat(Boat):
         self.lap_start_time = 0.0
 
         if self.style == SailingStyle.PERFECTIONIST:
-            self.turn_rate_modifier = random.uniform(0.95, 1.05)
-            self.sail_trim_error = random.uniform(-5, 5)
-            self.heading_error = random.uniform(-2, 2)
-            self.tack_anticipation = random.uniform(5, 10)
-        elif self.style == SailingStyle.AGGRESSIVE:
-            self.turn_rate_modifier = random.uniform(0.8, 1.1)
-            self.sail_trim_error = random.uniform(-10, 10)
-            self.heading_error = random.uniform(-5, 5)
-            self.tack_anticipation = random.uniform(0, 5)
-        elif self.style == SailingStyle.CAUTIOUS:
-            self.turn_rate_modifier = random.uniform(0.7, 0.95)
-            self.sail_trim_error = random.uniform(-15, 15)
-            self.heading_error = random.uniform(-8, 8)
+            self.turn_rate_modifier = random.uniform(1.0, 1.1)
+            self.sail_trim_error = random.uniform(-2, 2)
+            self.heading_error = random.uniform(-1, 1)
             self.tack_anticipation = random.uniform(10, 15)
+        elif self.style == SailingStyle.AGGRESSIVE:
+            self.turn_rate_modifier = random.uniform(0.9, 1.15)
+            self.sail_trim_error = random.uniform(-5, 5)
+            self.heading_error = random.uniform(-3, 3)
+            self.tack_anticipation = random.uniform(5, 10)
+        elif self.style == SailingStyle.CAUTIOUS:
+            self.turn_rate_modifier = random.uniform(0.85, 1.0)
+            self.sail_trim_error = random.uniform(-8, 8)
+            self.heading_error = random.uniform(-5, 5)
+            self.tack_anticipation = random.uniform(12, 18)
         elif self.style == SailingStyle.ERRATIC:
-            self.turn_rate_modifier = random.uniform(0.6, 1.2)
-            self.sail_trim_error = random.uniform(-20, 20)
-            self.heading_error = random.uniform(-12, 12)
-            self.tack_anticipation = random.uniform(-5, 15)
+            self.turn_rate_modifier = random.uniform(0.8, 1.2)
+            self.sail_trim_error = random.uniform(-10, 10)
+            self.heading_error = random.uniform(-7, 7)
+            self.tack_anticipation = random.uniform(5, 15)
         else:
             self.turn_rate_modifier = 1.0
             self.sail_trim_error = 0
@@ -337,6 +337,22 @@ class AIBoat(Boat):
             self.speed *= 0.98
             super().update(0, 0, dt)
             return
+
+        # Stall recovery logic
+        if self.speed < 1.5 and self.wind_effectiveness < 0.1:
+            wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+            # If pointing towards the wind, turn away sharply
+            if abs(wind_angle_rel_boat) < MIN_SAILING_ANGLE + 10:
+                # Turn away from the wind very aggressively
+                if wind_angle_rel_boat > 0:
+                    self.turn(-2.0) # Turn port
+                else:
+                    self.turn(2.0) # Turn starboard
+                
+                # Ease sails completely
+                self.sail_angle_rel = MAX_SAIL_ANGLE_REL 
+                super().update(wind_speed, wind_direction, dt)
+                return
 
         target = self.get_current_target(course_buoys, start_finish_line)
         if not target:
@@ -359,7 +375,7 @@ class AIBoat(Boat):
 
     def get_current_target(self, course_buoys, start_finish_line):
         """Determines the AI's next target coordinates, can be slightly off."""
-        if self.next_buoy_index < len(course_buoys):
+        if self.next_buoy_index >= 0 and self.next_buoy_index < len(course_buoys):
             base_target = course_buoys[self.next_buoy_index]
         else:
             base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
@@ -384,12 +400,22 @@ class AIBoat(Boat):
         wind_angle_diff = abs(angle_difference(direct_heading_to_target, wind_direction))
 
         if wind_angle_diff < MIN_SAILING_ANGLE + self.tack_anticipation:
-            tack_angle = MIN_SAILING_ANGLE + random.uniform(-5, 10)
-            if self.world_x > 0:
-                return normalize_angle(wind_direction - tack_angle - random.uniform(0, 5))
+            # Target is in the no-go zone, need to tack.
+            tack_angle = MIN_SAILING_ANGLE + random.uniform(5, 20)
+
+            # Determine which tack is better by checking which is closer to the target
+            port_tack_heading = normalize_angle(wind_direction + tack_angle)
+            starboard_tack_heading = normalize_angle(wind_direction - tack_angle)
+
+            port_diff = abs(angle_difference(port_tack_heading, direct_heading_to_target))
+            starboard_diff = abs(angle_difference(starboard_tack_heading, direct_heading_to_target))
+
+            if port_diff < starboard_diff:
+                return normalize_angle(port_tack_heading + random.uniform(-3, 3))
             else:
-                return normalize_angle(wind_direction + tack_angle + random.uniform(0, 5))
+                return normalize_angle(starboard_tack_heading + random.uniform(-3, 3))
         else:
+             # Target is not in the no-go zone, sail directly towards it with some error.
             overshoot = 0
             if self.style == SailingStyle.AGGRESSIVE:
                 overshoot = random.uniform(-2, 5)
