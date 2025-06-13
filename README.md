@@ -20,7 +20,7 @@ Welcome to Dinghy Sailing Race! This is a 2D sailing simulation game built with 
     * Wake particles trailing the boat.
 
 ### AI & Gameplay
-* **AI Opponents:** Race against a fleet of 4 AI-controlled boats in every race.
+* **AI Opponents:** Race against a fleet of AI-controlled boats in every race.
 * **Varied AI Sailing Styles:** Each AI is randomly assigned a personality (`PERFECTIONIST`, `AGGRESSIVE`, `CAUTIOUS`, or `ERRATIC`), affecting their skill, decision-making, and sailing lines.
 * **Individual Boat Colors:** AI boats are given unique colors to make them easily distinguishable from the player and each other.
 * **Proper Race Rules:** All boats, including AI, must cross the start/finish line to begin the race and to complete each lap.
@@ -32,46 +32,50 @@ Welcome to Dinghy Sailing Race! This is a 2D sailing simulation game built with 
 * **Clear Progression:** The next buoy is clearly indicated on both the main screen and the minimap.
 
 ### User Interface
-* **Setup Screen:** Configure the number of laps before starting. The generated course is shown on the minimap.
+* **Setup Screen:** Configure the number of laps and players before starting.
 * **Racing HUD:**
-    * Boat speed.
-    * Sail trim angle (actual and visual).
-    * Wind speed and direction indicator.
-    * Sail wind effectiveness percentage.
-    * Optimal sail trim angle suggestion.
-    * Current lap, total laps, next buoy information.
-    * Current lap time and total race time.
-    * Display of previous lap times.
-* **Minimap:** Shows player position, AI boats, sandbars, all buoys (with the next one highlighted), and the start/finish line.
-* **Finished Screen:** Displays total race time and a summary of all lap times.
+    * Boat speed and sail trim info.
+    * Wind speed and a shared direction gauge.
+    * Sail wind effectiveness and optimal trim suggestion.
+    * Current lap, total laps, and next buoy information.
+    * Lap timers and total race time.
+* **Split-Screen & Minimaps:** In two-player mode, the screen splits horizontally, and each player gets their own dedicated minimap.
+* **Finished Screen:** Displays total race time and a summary of all lap times for all competitors.
 
 ## How to Play
 
 ### Goal
-The goal is to complete the set number of laps around the buoy-marked course faster than the AI opponents.
+The goal is to complete the set number of laps around the buoy-marked course faster than your opponents.
 
 ### Controls
-* **Turn Left:** `LEFT ARROW` or `A` key
-* **Turn Right:** `RIGHT ARROW` or `D` key
-* **Trim Sail In (sheet in):** `UP ARROW` or `W` key
-* **Trim Sail Out (ease sheet):** `DOWN ARROW` or `S` key
-* **Mouse:** Used for interacting with buttons in the UI.
+
+**Player 1:**
+* **Turn Left/Right:** `LEFT` / `RIGHT` ARROW keys
+* **Trim Sail In/Out:** `UP` / `DOWN` ARROW keys
+
+**Player 2:**
+* **Turn Left/Right:** `A` / `D` keys
+* **Trim Sail In/Out:** `W` / `S` keys
+
+**UI Interaction:**
+* **Mouse:** Used for interacting with buttons on menus.
 
 ### Game Flow
 1.  **Setup:**
-    * When the game starts, you'll be on the "Race Setup" screen.
-    * Choose the number of laps for the race using the `+` and `-` buttons.
-    * Click "Start Race" to begin.
+    * When the game starts, you'll be on the "Game Setup" screen.
+    * Choose between 1 or 2 players.
+    * Set the number of laps and races for the series.
+    * Click "Start Series" to begin.
 2.  **Racing:**
-    * Your boat and the AI boats will start near the start/finish line. You must cross the line to officially start the first lap.
+    * Your boat(s) and the AI boats will start near the start/finish line. You must cross the line to officially start the first lap.
     * Sail your boat by controlling the rudder and sail trim.
     * Navigate towards the currently indicated "Next Buoy". Buoys must be rounded in sequential order.
     * After rounding all course buoys, head back to and cross the start/finish line to complete the lap.
-    * If you hit a sandbar, your boat will slow down considerably.
+    * If you hit a sandbar, your boat will slow down considerably. The sandbars are rendered as submerged, so watch out!
 3.  **Finished:**
-    * Once all your laps are completed, the "Race Finished!" screen will appear.
-    * It displays your total race time and a list of all your lap times.
-    * Click "New Race Setup" to return to the setup screen.
+    * Once all human players have completed their laps, the "Race Results" screen will appear.
+    * It displays the final times and points awarded for the race, along with current series standings.
+    * Click the button to proceed to the next race or to the final results screen.
 
 ## Running the Game
 

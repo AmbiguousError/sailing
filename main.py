@@ -6,10 +6,13 @@ import math
 from enum import Enum, auto
 
 from constants import *
-from utils import *
+from utils import (
+    deg_to_rad, format_time, distance_sq, check_line_crossing,
+    create_wave_layer, draw_scrolling_water, normalize_angle, angle_difference
+)
 from entities import Boat, Buoy, AIBoat, SailingStyle
 from course import generate_random_buoys, generate_random_sandbars
-from graphics import draw_scrolling_water, draw_map, draw_button, create_wave_layer, draw_wind_gauge
+from graphics import draw_map, draw_button, draw_wind_gauge
 
 class GameState(Enum):
     SETUP = auto()
@@ -55,7 +58,7 @@ def render_view(surface, camera_boat, players, ai_boats, sandbars, buoys, start_
         boat.draw_wake(surface, world_offset_x, world_offset_y, view_center)
 
     for sandbar in sandbars:
-        sandbar.draw(surface, world_offset_x, world_offset_y, view_center)
+        sandbar.draw(surface, world_offset_x, world_offset_y, view_center, dt, wind_direction)
     
     sf_p1_screen = (int(start_finish_line[0][0] - world_offset_x + view_center[0]), int(start_finish_line[0][1] - world_offset_y + view_center[1]))
     sf_p2_screen = (int(start_finish_line[1][0] - world_offset_x + view_center[0]), int(start_finish_line[1][1] - world_offset_y + view_center[1]))
@@ -174,7 +177,7 @@ def main():
     wind_speed = random.uniform(MIN_WIND_SPEED, MAX_WIND_SPEED)
     wind_direction = random.uniform(0, 360)
     last_wind_update = pygame.time.get_ticks()
-    wave_layers = [create_wave_layer(SCREEN_WIDTH + 100, SCREEN_HEIGHT // 2 + 100, WAVE_DENSITY * (i+1)) for i in range(NUM_WAVE_LAYERS)]
+    main_wave_layers = [create_wave_layer(SCREEN_WIDTH + 100, SCREEN_HEIGHT // 2 + 100, WAVE_DENSITY, WAVE_LAYER_ALPHA, WAVE_LINE_THICKNESS) for i in range(NUM_WAVE_LAYERS)]
     wave_offsets = [[0.0, 0.0] for _ in range(NUM_WAVE_LAYERS)]
     all_boats = []
     
@@ -392,15 +395,15 @@ def main():
             }
 
             if num_players == 1:
-                render_view(screen, player1_boat, players, ai_boats, sandbars, buoys, START_FINISH_LINE, wave_layers, wave_offsets, wind_direction, dt, font, lap_font, race_info_pack)
+                render_view(screen, player1_boat, players, ai_boats, sandbars, buoys, START_FINISH_LINE, main_wave_layers, wave_offsets, wind_direction, dt, font, lap_font, race_info_pack)
                 draw_map(screen, player1_boat, ai_boats, sandbars, buoys, player1_boat.next_buoy_index, START_FINISH_LINE, MAP_RECT_P1, WORLD_BOUNDS, players)
             else: # 2 Players
                 viewport_height = SCREEN_HEIGHT // 2
                 top_viewport = screen.subsurface(pygame.Rect(0, 0, SCREEN_WIDTH, viewport_height))
                 bottom_viewport = screen.subsurface(pygame.Rect(0, viewport_height, SCREEN_WIDTH, viewport_height))
 
-                render_view(top_viewport, player1_boat, players, ai_boats, sandbars, buoys, START_FINISH_LINE, wave_layers, wave_offsets, wind_direction, dt, font, lap_font, race_info_pack)
-                render_view(bottom_viewport, player2_boat, players, ai_boats, sandbars, buoys, START_FINISH_LINE, wave_layers, wave_offsets, wind_direction, dt, font, lap_font, race_info_pack)
+                render_view(top_viewport, player1_boat, players, ai_boats, sandbars, buoys, START_FINISH_LINE, main_wave_layers, wave_offsets, wind_direction, dt, font, lap_font, race_info_pack)
+                render_view(bottom_viewport, player2_boat, players, ai_boats, sandbars, buoys, START_FINISH_LINE, main_wave_layers, wave_offsets, wind_direction, dt, font, lap_font, race_info_pack)
 
                 pygame.draw.line(screen, BLACK, (0, viewport_height), (SCREEN_WIDTH, viewport_height), 3)
                 

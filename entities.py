@@ -249,6 +249,22 @@ class Sandbar:
         self.points_rel = self._generate_random_points(size)
         self.points_world = [(x + world_x, y + world_y) for x, y in self.points_rel]
         self.rect = self._calculate_bounding_rect(self.points_world)
+        self._initialize_waves()
+
+    def _initialize_waves(self):
+        """Creates data for the shimmering waves over the sandbar."""
+        w, h = self.rect.width + 100, self.rect.height + 100
+        if w <= 100 or h <= 100: # Avoid creating empty surfaces if sandbar is tiny
+            self.wave_layers = []
+            self.wave_offsets = []
+            return
+            
+        self.wave_layers = [
+            create_wave_layer(int(w), int(h), int(WAVE_DENSITY / 4), 80, 1),
+            create_wave_layer(int(w), int(h), int(WAVE_DENSITY / 4), 90, 2)
+        ]
+        self.wave_offsets = [[random.uniform(0, w), random.uniform(0, h)] for _ in self.wave_layers]
+
 
     def _generate_random_points(self, size):
         points = []
@@ -273,15 +289,38 @@ class Sandbar:
         max_y = max(p[1] for p in points_list)
         return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
 
-    def draw(self, surface, offset_x, offset_y, view_center):
+    def draw(self, surface, offset_x, offset_y, view_center, dt, wind_direction):
+        screen_rect = self.rect.move(-offset_x + view_center[0], -offset_y + view_center[1])
+        
+        if not screen_rect.colliderect(surface.get_rect()):
+            return
+
         screen_points = [(int(px - offset_x + view_center[0]), int(py - offset_y + view_center[1])) for px, py in self.points_world]
         
-        # Basic culling to avoid drawing off-screen polygons
-        screen_rect = self.rect.move(-offset_x + view_center[0], -offset_y + view_center[1])
-        if screen_rect.colliderect(surface.get_rect()):
-            if len(screen_points) > 2:
-                pygame.draw.polygon(surface, self.color, screen_points)
-                pygame.draw.polygon(surface, self.border_color, screen_points, 2)
+        # 1. Draw the base sand color
+        pygame.draw.polygon(surface, self.color, screen_points)
+
+        # 2. Create a temporary surface for the water effects
+        water_surface = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
+        water_surface.fill((*BLUE, 150))
+
+        # 3. Draw scrolling waves onto this temporary surface
+        draw_scrolling_water(water_surface, self.wave_layers, self.wave_offsets, deg_to_rad(wind_direction), dt)
+
+        # 4. Create a mask from the sandbar's shape to clip the water effects
+        mask_surface = pygame.Surface(screen_rect.size, pygame.SRCALPHA)
+        local_points = [(p[0] - screen_rect.left, p[1] - screen_rect.top) for p in screen_points]
+        pygame.draw.polygon(mask_surface, (255, 255, 255, 255), local_points)
+
+        # 5. Apply the mask to the water effects surface
+        water_surface.blit(mask_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        # 6. Blit the final masked water effect onto the main screen
+        surface.blit(water_surface, screen_rect.topleft)
+
+        # 7. Draw the border on top
+        pygame.draw.polygon(surface, self.border_color, screen_points, 2)
+
 
 class Buoy:
     """Represents a course marker buoy."""
@@ -343,7 +382,7 @@ class AIBoat(Boat):
     def ai_update(self, wind_speed, wind_direction, course_buoys, start_finish_line, dt):
         """The brain of the AI boat. Sets rudder and sail intentions."""
         if self.is_finished:
-            self.speed *= 0.98 # Drift to a stop
+            self.speed *= 0.98
             return
 
         # Update timer for current buoy to detect if stuck
@@ -354,14 +393,11 @@ class AIBoat(Boat):
             self.time_at_current_buoy += dt
 
         # Get unstuck logic
-        if self.time_at_current_buoy > 20.0: # 20 second timeout
-            # AI is stuck. Force a tack by turning hard away from the wind.
+        if self.time_at_current_buoy > 20.0:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
-            if wind_angle_rel_boat > 0:
-                self.turn(-1.5) # Turn away from wind
-            else:
-                self.turn(1.5) # Turn away from wind
-            self.time_at_current_buoy = 0 # Reset timer
+            if wind_angle_rel_boat > 0: self.turn(-1.5)
+            else: self.turn(1.5)
+            self.time_at_current_buoy = 0
             return 
 
         # Tether to keep AI from sailing off the map
