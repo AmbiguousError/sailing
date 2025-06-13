@@ -42,7 +42,9 @@ def check_line_crossing(p1, p2, line_p1, line_p2):
 
 def format_time(seconds):
     """Formats seconds into MM:SS.ss"""
-    if seconds < 0: return "00:00.00"
+    # Check for invalid numbers like NaN or infinity to prevent crashing
+    if seconds < 0 or not math.isfinite(seconds):
+        return "--:--.--"
     mins = int(seconds // 60)
     secs = int(seconds % 60)
     hunds = int((seconds * 100) % 100)

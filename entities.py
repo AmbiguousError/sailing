@@ -345,17 +345,30 @@ class AIBoat(Boat):
             super().update(0, 0, dt)
             return
 
+        # Add a check to prevent sailing too far off map
+        dist_from_center_sq = self.world_x**2 + self.world_y**2
+        if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2: # If way outside world bounds
+            # Create a temporary target to get back towards the action
+            target = (0, 0) 
+        else:
+            target = self.get_current_target(course_buoys, start_finish_line)
+
         # Stall recovery logic
         if self.speed < 1.5 and self.wind_effectiveness < 0.1:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+            # If pointing towards the wind, turn away sharply
             if abs(wind_angle_rel_boat) < MIN_SAILING_ANGLE + 10:
-                if wind_angle_rel_boat > 0: self.turn(-2.0)
-                else: self.turn(2.0)
+                # Turn away from the wind very aggressively
+                if wind_angle_rel_boat > 0:
+                    self.turn(-2.0) # Turn port
+                else:
+                    self.turn(2.0) # Turn starboard
+                
+                # Ease sails completely
                 self.sail_angle_rel = MAX_SAIL_ANGLE_REL 
                 super().update(wind_speed, wind_direction, dt)
                 return
 
-        target = self.get_current_target(course_buoys, start_finish_line)
         if not target:
             super().update(0, 0, dt)
             return
