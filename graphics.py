@@ -43,11 +43,11 @@ def draw_scrolling_water(surface, layers, offsets, wind_direction_rad, dt):
         x_offset, y_offset = offsets[i]
         start_x = -x_offset
         start_y = -y_offset
-        for row in range(int(start_y / h) -1 , int((surface.get_height() - start_y) / h) + 1):
-             for col in range(int(start_x / w) -1, int((surface.get_width() - start_x) / w) + 1):
+        for row in range(int(start_y / h) -1 , int((surface.get_height() - start_y) / h) + 2):
+             for col in range(int(start_x / w) -1, int((surface.get_width() - start_x) / w) + 2):
                  surface.blit(layer, (start_x + col * w, start_y + row * h))
 
-def draw_map(surface, boat, ai_boats, sandbars, buoys, next_buoy_index, start_finish_line, map_rect, world_bounds):
+def draw_map(surface, boat, ai_boats, sandbars, buoys, next_buoy_index, start_finish_line, map_rect, world_bounds, players):
     """Draws the minimap including the course."""
     map_surface = pygame.Surface(map_rect.size, pygame.SRCALPHA)
     map_surface.fill(MAP_BG_COLOR)
@@ -60,10 +60,11 @@ def draw_map(surface, boat, ai_boats, sandbars, buoys, next_buoy_index, start_fi
     pygame.draw.line(surface, START_FINISH_LINE_COLOR, sf_p1_map, sf_p2_map, 1)
 
     # Buoys
+    course_buoy_list_start_index = 2
     for i, buoy in enumerate(buoys):
         map_x = map_rect.centerx + buoy.world_x * MAP_WORLD_SCALE_X
         map_y = map_rect.centery + buoy.world_y * MAP_WORLD_SCALE_Y
-        is_next = (i == next_buoy_index)
+        is_next = (i >= course_buoy_list_start_index and (i - course_buoy_list_start_index) == next_buoy_index)
         color_to_use = buoy.color
         if is_next and not buoy.is_gate:
             color_to_use = NEXT_BUOY_INDICATOR_COLOR
@@ -88,18 +89,19 @@ def draw_map(surface, boat, ai_boats, sandbars, buoys, next_buoy_index, start_fi
         if map_rect.collidepoint(ai_map_x, ai_map_y):
             pygame.draw.circle(surface, ai_boat.color, (int(ai_map_x), int(ai_map_y)), 2)
 
-    # Player Boat
-    boat_map_x = map_rect.centerx + boat.world_x * MAP_WORLD_SCALE_X
-    boat_map_y = map_rect.centery + boat.world_y * MAP_WORLD_SCALE_Y
-    if map_rect.collidepoint(boat_map_x, boat_map_y):
-        boat_angle_rad = deg_to_rad(boat.heading)
-        p1 = (boat_map_x + math.cos(boat_angle_rad) * MAP_BOAT_MARKER_SIZE, boat_map_y + math.sin(boat_angle_rad) * MAP_BOAT_MARKER_SIZE)
-        p2 = (boat_map_x + math.cos(boat_angle_rad + 2.356) * MAP_BOAT_MARKER_SIZE * 0.6, boat_map_y + math.sin(boat_angle_rad + 2.356) * MAP_BOAT_MARKER_SIZE * 0.6)
-        p3 = (boat_map_x + math.cos(boat_angle_rad - 2.356) * MAP_BOAT_MARKER_SIZE * 0.6, boat_map_y + math.sin(boat_angle_rad - 2.356) * MAP_BOAT_MARKER_SIZE * 0.6)
-        try:
-            pygame.draw.polygon(surface, MAP_BOAT_COLOR, [(int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (int(p3[0]), int(p3[1]))])
-        except ValueError:
-            pygame.draw.circle(surface, MAP_BOAT_COLOR, (int(boat_map_x), int(boat_map_y)), 2)
+    # Player Boats
+    for p_boat in players:
+        boat_map_x = map_rect.centerx + p_boat.world_x * MAP_WORLD_SCALE_X
+        boat_map_y = map_rect.centery + p_boat.world_y * MAP_WORLD_SCALE_Y
+        if map_rect.collidepoint(boat_map_x, boat_map_y):
+            boat_angle_rad = deg_to_rad(p_boat.heading)
+            p1 = (boat_map_x + math.cos(boat_angle_rad) * MAP_BOAT_MARKER_SIZE, boat_map_y + math.sin(boat_angle_rad) * MAP_BOAT_MARKER_SIZE)
+            p2 = (boat_map_x + math.cos(boat_angle_rad + 2.356) * MAP_BOAT_MARKER_SIZE * 0.6, boat_map_y + math.sin(boat_angle_rad + 2.356) * MAP_BOAT_MARKER_SIZE * 0.6)
+            p3 = (boat_map_x + math.cos(boat_angle_rad - 2.356) * MAP_BOAT_MARKER_SIZE * 0.6, boat_map_y + math.sin(boat_angle_rad - 2.356) * MAP_BOAT_MARKER_SIZE * 0.6)
+            try:
+                pygame.draw.polygon(surface, p_boat.color, [(int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (int(p3[0]), int(p3[1]))])
+            except ValueError:
+                pygame.draw.circle(surface, p_boat.color, (int(boat_map_x), int(boat_map_y)), 2)
 
 def draw_button(surface, rect, text, font, button_color, text_color, hover_color):
     """Draws a simple button and returns True if hovered."""
