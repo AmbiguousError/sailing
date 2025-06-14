@@ -429,15 +429,18 @@ class AIBoat(Boat):
     def get_current_target(self, course_buoys, start_finish_line):
         """Determines the AI's current navigation target."""
         base_target = None
+        # --- CORRECTED LOGIC ---
+        # If the boat hasn't officially started the race by crossing the line, that's the primary target.
         if not self.race_started:
-            if course_buoys:
-                base_target = course_buoys[0] 
-            else: 
-                 base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
-                               (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+            # Aim for a point slightly beyond the center of the start line to ensure a clean crossing.
+            line_center_x = (start_finish_line[0][0] + start_finish_line[1][0]) / 2
+            line_center_y = (start_finish_line[0][1] + start_finish_line[1][1]) / 2
+            # The normal vector for the start line is (1, 0), so we aim for a point just past it on the x-axis.
+            base_target = (line_center_x + 60, line_center_y + random.uniform(-20, 20))
         elif self.next_buoy_index < len(course_buoys):
             base_target = course_buoys[self.next_buoy_index]
         else:
+            # If all buoys are rounded, head for the finish line
             base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
                            (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
 
