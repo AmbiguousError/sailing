@@ -4,8 +4,14 @@ import pygame
 import math
 
 # --- Screen & World ---
-SCREEN_WIDTH = 1280
-SCREEN_HEIGHT = 1440  # Doubled screen height
+# Initialize Pygame temporarily to get screen info
+pygame.init()
+info = pygame.display.Info()
+# Set the screen size to the current monitor's resolution
+SCREEN_WIDTH = info.current_w
+SCREEN_HEIGHT = info.current_h
+pygame.quit() # Quit the temporary instance
+
 CENTER_X = SCREEN_WIDTH // 2
 CENTER_Y = SCREEN_HEIGHT // 2
 WORLD_BOUNDS = 2000
@@ -32,28 +38,20 @@ START_FINISH_LINE_COLOR = WHITE
 NEXT_BUOY_INDICATOR_COLOR = (0, 255, 0)
 
 # Ocean-themed pastel palette
-BLUE = pygame.Color("#A8DADC") # Lightest water
+BLUE = pygame.Color("#A8DADC") # Base ocean color
 DARK_BLUE = pygame.Color("#1D3557") # Deepest ocean for the base fill
 DEPTH_COLORS = [pygame.Color("#457B9D"), pygame.Color("#A8DADC")]
-SHALLOW_COLORS = [pygame.Color("#F1FAEE")]
-SAND_COLOR = pygame.Color("#F1FAEE")
+SHALLOW_COLORS = [pygame.Color("#2A9D8F"), pygame.Color("#E9C46A")]
+SAND_COLOR = pygame.Color("#F1FAEE") # Lightest shallow areas/sand
 DARK_SAND_COLOR = pygame.Color("#A8DADC")
-
-# Boat Colors (Pastel)
-AI_BOAT_COLORS = [
-    pygame.Color("#E63946"), # Red
-    pygame.Color("#F4A261"), # Orange
-    pygame.Color("#2A9D8F"), # Green
-    pygame.Color("#457B9D"), # Blue
-    pygame.Color("#F1FAEE"), # Off-white
-    pygame.Color("#A8DADC"), # Light Blue
-]
+LIGHT_BLUE = (100, 150, 200) # Original light blue for waves
 
 
 # --- Boat Properties ---
 BOAT_TURN_SPEED = 2.0
 BOAT_ACCEL_FACTOR = 0.08
 BOAT_DRAG = 0.985
+BOAT_COLLISION_SPEED_REDUCTION = 0.95
 SANDBAR_DRAG_MULTIPLIER = 25.0
 NO_POWER_DECEL = 0.75
 MAX_BOAT_SPEED = 15.0
@@ -65,7 +63,13 @@ SAIL_MAX_CURVE = 8
 MIN_SAILING_ANGLE = 45
 OPTIMAL_INDICATOR_LENGTH = 25
 NUM_AI_BOATS = 4
-BOAT_COLLISION_SPEED_REDUCTION = 0.95
+AI_BOAT_COLORS = [
+    pygame.Color("#E63946"), # Red
+    pygame.Color("#F4A261"), # Orange
+    pygame.Color("#2A9D8F"), # Green
+    pygame.Color("#457B9D"), # Blue
+]
+
 
 # --- Wind Properties ---
 MIN_WIND_SPEED = 10.0
