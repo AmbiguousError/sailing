@@ -110,7 +110,9 @@ class Boat:
     def turn(self, direction):
         self.rudder_angle = direction
 
-    def update(self, wind_speed, wind_direction, dt):
+# In the Boat class in entities.py
+
+    def update(self, wind_speed, wind_direction, dt, world_wrap=False): # Add world_wrap parameter
         self.prev_world_x = self.world_x
         self.prev_world_y = self.world_y
 
@@ -121,15 +123,12 @@ class Boat:
         self.heading = normalize_angle(self.heading + turn_amount)
         self.rudder_angle = 0
 
-        # Visual Sail Angle
+        # Visual Sail Angle is now directly controlled by the player's input
+        self.visual_sail_angle_rel = self.sail_angle_rel
+
+        # These variables are still needed for force calculation
         wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
         abs_wind_angle_rel_boat = abs(wind_angle_rel_boat)
-        natural_sail_angle = angle_difference(180, wind_angle_rel_boat)
-        natural_sail_angle = max(-MAX_SAIL_ANGLE_REL, min(MAX_SAIL_ANGLE_REL, natural_sail_angle))
-        if natural_sail_angle < 0:
-            self.visual_sail_angle_rel = max(natural_sail_angle, self.sail_angle_rel)
-        else:
-            self.visual_sail_angle_rel = min(natural_sail_angle, self.sail_angle_rel)
 
         # Force Calculation
         force_magnitude = 0
@@ -167,9 +166,17 @@ class Boat:
         self.world_x += dx
         self.world_y += dy
 
+        # --- NEW: World Wrapping Logic ---
+        if world_wrap:
+            if self.world_x > WORLD_BOUNDS: self.world_x = -WORLD_BOUNDS + 1
+            if self.world_x < -WORLD_BOUNDS: self.world_x = WORLD_BOUNDS - 1
+            if self.world_y > WORLD_BOUNDS: self.world_y = -WORLD_BOUNDS + 1
+            if self.world_y < -WORLD_BOUNDS: self.world_y = WORLD_BOUNDS - 1
+
+
         # Visual Updates (will be called from main render loop)
         self.update_wake(dt)
-
+        
     def draw(self, surface):
         self.rotate_and_position()
 
