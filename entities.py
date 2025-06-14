@@ -368,17 +368,29 @@ class AIBoat(Boat):
         if self.is_finished:
             self.speed *= 0.98
             return
-        
+            
+        # --- IMPROVED "IN IRONS" RECOVERY ---
+        # If stuck in irons (low speed, head to wind), attempt a recovery maneuver.
+        is_in_irons = self.speed < 1.5 and self.wind_effectiveness < 0.1 and abs(angle_difference(wind_direction, self.heading)) < MIN_SAILING_ANGLE + 5
+        if is_in_irons:
+            # Force the sail out to catch any bit of wind to help turn the boat
+            self.sail_angle_rel = MAX_SAIL_ANGLE_REL
+            # Turn hard to one side to get out of the no-go zone
+            wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+            if wind_angle_rel_boat > 0:
+                self.turn(-1.5) 
+            else:
+                self.turn(1.5)
+            # Unlike before, we DON'T return here. We allow the AI to continue
+            # its logic to pick a proper tacking angle away from the wind.
+
         # Pre-race starting strategy
         if pre_race_timer > 0:
-            # First, set a staging point behind the line
             if self.staging_point is None:
                 self.staging_point = (self.world_x - 100, self.world_y + random.uniform(-50, 50))
 
-            # If more than 5 seconds left, sail to the staging point
             if pre_race_timer > 5:
                 target = self.staging_point
-            # In the last 5 seconds, aim for the line to get a good start
             else:
                  target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
                            (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
@@ -388,8 +400,9 @@ class AIBoat(Boat):
                 self.last_buoy_index = self.next_buoy_index
             else:
                 self.time_at_current_buoy += dt
-
-            if self.time_at_current_buoy > 12.0:
+            
+            # Last-resort unstuck mechanism if circling a buoy
+            if self.time_at_current_buoy > 15.0:
                 wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
                 if wind_angle_rel_boat > 0: self.turn(-1.5)
                 else: self.turn(1.5)
@@ -401,14 +414,6 @@ class AIBoat(Boat):
                 target = (0, 0)
             else:
                 target = self.get_current_target(course_buoys, start_finish_line)
-
-        if self.speed < 1.5 and self.wind_effectiveness < 0.1:
-            wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
-            if abs(wind_angle_rel_boat) < MIN_SAILING_ANGLE + 10:
-                if wind_angle_rel_boat > 0: self.turn(-2.0)
-                else: self.turn(2.0)
-                self.sail_angle_rel = MAX_SAIL_ANGLE_REL
-                return
 
         if not target:
             return
@@ -429,18 +434,13 @@ class AIBoat(Boat):
     def get_current_target(self, course_buoys, start_finish_line):
         """Determines the AI's current navigation target."""
         base_target = None
-        # --- CORRECTED LOGIC ---
-        # If the boat hasn't officially started the race by crossing the line, that's the primary target.
         if not self.race_started:
-            # Aim for a point slightly beyond the center of the start line to ensure a clean crossing.
             line_center_x = (start_finish_line[0][0] + start_finish_line[1][0]) / 2
             line_center_y = (start_finish_line[0][1] + start_finish_line[1][1]) / 2
-            # The normal vector for the start line is (1, 0), so we aim for a point just past it on the x-axis.
             base_target = (line_center_x + 60, line_center_y + random.uniform(-20, 20))
         elif self.next_buoy_index < len(course_buoys):
             base_target = course_buoys[self.next_buoy_index]
         else:
-            # If all buoys are rounded, head for the finish line
             base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
                            (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
 
