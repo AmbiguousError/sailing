@@ -42,7 +42,7 @@ DARK_BLUE = pygame.Color("#4A90E2")
 # Lighter shades for the shallows around sandbars
 DEPTH_COLORS = [pygame.Color("#55A6D9"), pygame.Color("#78C2C4")]
 # Even lighter shades for the shallowest areas
-SHALLOW_COLORS = [pygame.Color("#A2D5F2"), pygame.Color("#BDE4F4")]
+SHALLOW_COLORS = [pygame.Color("#FDFD96"), pygame.Color("#FFFACD")] # Pastel Yellows
 # Colors for the sandbars themselves
 SAND_COLOR = pygame.Color("#F9ECCB")  # Light sandy beige
 DARK_SAND_COLOR = pygame.Color("#E5D8B3") # Darker sandy color for borders/minimap
