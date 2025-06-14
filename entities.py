@@ -345,7 +345,7 @@ class AIBoat(Boat):
             self.time_at_current_buoy += dt
 
         # Get unstuck logic
-        if self.time_at_current_buoy > 20.0:
+        if self.time_at_current_buoy > 12.0: # Reduced timer to 12 seconds
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
             if wind_angle_rel_boat > 0: self.turn(-1.5)
             else: self.turn(1.5)
@@ -385,11 +385,17 @@ class AIBoat(Boat):
 
 
     def get_current_target(self, course_buoys, start_finish_line):
-        if self.next_buoy_index >= 0 and self.next_buoy_index < len(course_buoys):
-            base_target = course_buoys[self.next_buoy_index]
-        else:
+        if not self.race_started:
+            # Before crossing start, aim for the middle of the line
             base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
                            (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+        else:
+            if self.next_buoy_index >= 0 and self.next_buoy_index < len(course_buoys):
+                base_target = course_buoys[self.next_buoy_index]
+            else: # Heading for the finish line
+                base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
+                               (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+
         offset_factor = 1.0
         if self.style == SailingStyle.CAUTIOUS: offset_factor = 1.5
         elif self.style == SailingStyle.ERRATIC: offset_factor = 2.0

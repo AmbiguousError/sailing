@@ -46,11 +46,13 @@ def render_view(surface, camera_boat, players, ai_boats, sandbars, buoys, start_
     world_offset_y = camera_boat.world_y
     view_center = (surface.get_width() // 2, surface.get_height() // 2)
 
+    # Draw background from the pre-generated depth map
     area_x = (world_offset_x - view_center[0]) + WORLD_BOUNDS
     area_y = (world_offset_y - view_center[1]) + WORLD_BOUNDS
     view_rect_on_depth_map = pygame.Rect(area_x, area_y, surface.get_width(), surface.get_height())
     surface.blit(depth_map, (0,0), area=view_rect_on_depth_map)
 
+    # Draw scrolling waves on top
     draw_scrolling_water(surface, wave_layers, wave_offsets, deg_to_rad(wind_direction), dt)
 
     for boat in players + ai_boats:
@@ -286,7 +288,7 @@ def main():
             elif game_state in [GameState.RACE_RESULTS, GameState.SERIES_END]:
                  if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                      if game_state == GameState.RACE_RESULTS:
-                         if MAIN_MENU_BUTTON_RECT.collidepoint(event.pos): # Re-using rect for "Next Race" button
+                         if MAIN_MENU_BUTTON_RECT.collidepoint(event.pos): 
                              if current_race < total_races:
                                  current_race += 1
                                  start_new_race()
