@@ -15,6 +15,7 @@ from terrain import generate_depth_map
 class GameState(Enum):
     SETUP = auto()
     RACING = auto()
+    PAUSED = auto()
     RACE_RESULTS = auto()
     SERIES_END = auto()
 
@@ -45,13 +46,11 @@ def render_view(surface, camera_boat, players, ai_boats, sandbars, buoys, start_
     world_offset_y = camera_boat.world_y
     view_center = (surface.get_width() // 2, surface.get_height() // 2)
 
-    # Draw background from the pre-generated depth map
     area_x = (world_offset_x - view_center[0]) + WORLD_BOUNDS
     area_y = (world_offset_y - view_center[1]) + WORLD_BOUNDS
     view_rect_on_depth_map = pygame.Rect(area_x, area_y, surface.get_width(), surface.get_height())
     surface.blit(depth_map, (0,0), area=view_rect_on_depth_map)
 
-    # Draw scrolling waves on top
     draw_scrolling_water(surface, wave_layers, wave_offsets, deg_to_rad(wind_direction), dt)
 
     for boat in players + ai_boats:
@@ -123,6 +122,20 @@ def draw_hud(surface, font, lap_font, boat, race_info, num_course_buoys):
         surface.blit(lap_time_surf, (surface.get_width() - lap_time_surf.get_width() - 10, surface.get_height() - 100 - y_lap_offset))
         y_lap_offset += 25
 
+def draw_pause_menu(surface, font):
+    """Draws the pause menu overlay."""
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 150))
+    surface.blit(overlay, (0, 0))
+
+    title_surf = font.render("Paused", True, WHITE)
+    surface.blit(title_surf, (CENTER_X - title_surf.get_width() // 2, CENTER_Y - 120))
+
+    draw_button(surface, RESUME_BUTTON_RECT, "Resume", font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+    draw_button(surface, RESTART_BUTTON_RECT, "Restart Series", font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+    draw_button(surface, FORFEIT_RACE_BUTTON_RECT, "Forfeit Race", font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+    draw_button(surface, EXIT_GAME_BUTTON_RECT, "Exit to Desktop", font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+
 
 def main():
     pygame.init()
@@ -151,8 +164,7 @@ def main():
     laps_plus_rect = pygame.Rect(CENTER_X - 40, SCREEN_HEIGHT * 0.3, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
     races_minus_rect = pygame.Rect(CENTER_X + 40, SCREEN_HEIGHT * 0.3, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
     races_plus_rect = pygame.Rect(CENTER_X + 100, SCREEN_HEIGHT * 0.3, LAP_BUTTON_SIZE, LAP_BUTTON_SIZE)
-    next_race_button_rect = pygame.Rect(CENTER_X - SETUP_BUTTON_WIDTH // 2, SCREEN_HEIGHT * 0.85, SETUP_BUTTON_WIDTH, SETUP_BUTTON_HEIGHT)
-
+    
     game_state = GameState.SETUP
     num_players = 1
     selected_laps = DEFAULT_RACE_LAPS
@@ -225,11 +237,18 @@ def main():
     while running:
         current_time_s = pygame.time.get_ticks() / 1000.0
         dt = clock.tick(60) / 1000.0
-        dt = min(dt, 0.1)
+        dt = min(dt, 0.1) if game_state != GameState.PAUSED else 0
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    if game_state == GameState.RACING:
+                        game_state = GameState.PAUSED
+                    elif game_state == GameState.PAUSED:
+                        game_state = GameState.RACING
+
             if game_state == GameState.SETUP:
                 if not buoys: 
                     course_buoys_coords = generate_random_buoys(NUM_COURSE_BUOYS)
@@ -248,19 +267,38 @@ def main():
                     elif start_button_rect.collidepoint(event.pos):
                         start_new_series()
                         game_state = GameState.RACING
+            elif game_state == GameState.PAUSED:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if RESUME_BUTTON_RECT.collidepoint(event.pos):
+                        game_state = GameState.RACING
+                    elif RESTART_BUTTON_RECT.collidepoint(event.pos):
+                        game_state = GameState.SETUP
+                        buoys.clear()
+                    elif FORFEIT_RACE_BUTTON_RECT.collidepoint(event.pos):
+                        for p in players:
+                            if not p.is_finished:
+                                p.is_finished = True
+                                p.finish_time = float('inf')
+                        game_state = GameState.RACE_RESULTS
+                    elif EXIT_GAME_BUTTON_RECT.collidepoint(event.pos):
+                        running = False
+
             elif game_state in [GameState.RACE_RESULTS, GameState.SERIES_END]:
                  if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                     if next_race_button_rect.collidepoint(event.pos):
-                         if game_state == GameState.RACE_RESULTS:
+                     if game_state == GameState.RACE_RESULTS:
+                         if MAIN_MENU_BUTTON_RECT.collidepoint(event.pos): # Re-using rect for "Next Race" button
                              if current_race < total_races:
                                  current_race += 1
                                  start_new_race()
                                  game_state = GameState.RACING
                              else:
                                  game_state = GameState.SERIES_END
-                         elif game_state == GameState.SERIES_END:
-                             game_state = GameState.SETUP
-                             buoys.clear()
+                     elif game_state == GameState.SERIES_END:
+                         if MAIN_MENU_BUTTON_RECT.collidepoint(event.pos):
+                            game_state = GameState.SETUP
+                            buoys.clear()
+                         elif EXIT_END_SCREEN_BUTTON_RECT.collidepoint(event.pos):
+                            running = False
 
         if game_state == GameState.RACING:
             keys = pygame.key.get_pressed()
@@ -366,7 +404,7 @@ def main():
             
             draw_button(screen, start_button_rect, "Start Series", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
 
-        elif game_state == GameState.RACING:
+        elif game_state == GameState.RACING or game_state == GameState.PAUSED:
             race_info_pack = {
                 'wind_speed': wind_speed, 'wind_dir': wind_direction,
                 'current_race': current_race, 'total_races': total_races,
@@ -390,6 +428,10 @@ def main():
                 draw_map(screen, player2_boat, ai_boats, sandbars, buoys, player2_boat.next_buoy_index, START_FINISH_LINE, MAP_RECT_P2, WORLD_BOUNDS, players)
 
             draw_wind_gauge(screen, wind_direction, WIND_GAUGE_POS, WIND_GAUGE_RADIUS, lap_font)
+
+            if game_state == GameState.PAUSED:
+                draw_pause_menu(screen, title_font)
+
 
         elif game_state in [GameState.RACE_RESULTS, GameState.SERIES_END]:
             if game_state == GameState.RACE_RESULTS:
@@ -418,7 +460,7 @@ def main():
                     screen.blit(rank_surf, (col2_x + 20, y_offset2)); y_offset2 += 25
                 
                 button_text = "Next Race" if current_race < total_races else "Final Results"
-                draw_button(screen, next_race_button_rect, button_text, button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+                draw_button(screen, MAIN_MENU_BUTTON_RECT, button_text, button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
             else: # SERIES_END
                 title_surf = title_font.render("Final Series Standings", True, WHITE)
                 screen.blit(title_surf, (CENTER_X - title_surf.get_width()//2, 50))
@@ -428,7 +470,8 @@ def main():
                     rank_surf = font.render(f"{i+1}. {boat.name} - {boat.score} points", True, boat.color)
                     screen.blit(rank_surf, (CENTER_X - rank_surf.get_width() // 2, y_offset))
                     y_offset += 40
-                draw_button(screen, next_race_button_rect, "New Setup", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+                draw_button(screen, MAIN_MENU_BUTTON_RECT, "Main Menu", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
+                draw_button(screen, EXIT_END_SCREEN_BUTTON_RECT, "Exit to Desktop", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
 
         pygame.display.flip()
 
