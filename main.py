@@ -14,6 +14,7 @@ from terrain import generate_depth_map
 
 class GameState(Enum):
     SETUP = auto()
+    PRE_RACE = auto()
     RACING = auto()
     PAUSED = auto()
     RACE_RESULTS = auto()
@@ -149,6 +150,7 @@ def main():
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 30)
     title_font = pygame.font.Font(None, 48)
+    countdown_font = pygame.font.Font(None, 150)
     lap_font = pygame.font.Font(None, 24)
     button_font = pygame.font.Font(None, 24)
 
@@ -178,6 +180,7 @@ def main():
     total_races = selected_races
     current_race = 0
     race_results = []
+    pre_race_timer = 0.0
     
     wind_speed = random.uniform(MIN_WIND_SPEED, MAX_WIND_SPEED)
     wind_direction = random.uniform(0, 360)
@@ -210,8 +213,10 @@ def main():
         start_new_race()
 
     def start_new_race():
-        nonlocal course_buoys_coords, sandbars, buoys, wind_direction, depth_map_surface
+        nonlocal course_buoys_coords, sandbars, buoys, wind_direction, depth_map_surface, pre_race_timer, game_state
         print(f"--- Starting Race {current_race}/{total_races} ---")
+        pre_race_timer = 10.0
+        game_state = GameState.PRE_RACE
         
         wind_direction = random.uniform(0, 360)
         course_buoys_coords = generate_random_buoys(NUM_COURSE_BUOYS)
@@ -226,7 +231,7 @@ def main():
 
         for i, boat in enumerate(all_boats):
             boat.reset_position()
-            start_x = -150 - (i * 35)
+            start_x = -350 - (i * 35)
             start_y = random.uniform(-100, 100)
             boat.world_x, boat.world_y = start_x, start_y
             boat.last_line_crossing_time = -LINE_CROSSING_DEBOUNCE
@@ -235,7 +240,7 @@ def main():
             boat.lap_times = []
             boat.finish_time = 0
             boat.current_lap = 1
-            boat.next_buoy_index = -1
+            boat.next_buoy_index = 0
     
     running = True
     while running:
@@ -248,7 +253,7 @@ def main():
                 running = False
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    if game_state == GameState.RACING:
+                    if game_state == GameState.RACING or game_state == GameState.PRE_RACE:
                         game_state = GameState.PAUSED
                     elif game_state == GameState.PAUSED:
                         game_state = GameState.RACING
@@ -270,7 +275,6 @@ def main():
                     elif races_plus_rect.collidepoint(event.pos): selected_races = min(10, selected_races + 1)
                     elif start_button_rect.collidepoint(event.pos):
                         start_new_series()
-                        game_state = GameState.RACING
             elif game_state == GameState.PAUSED:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if RESUME_BUTTON_RECT.collidepoint(event.pos):
@@ -294,7 +298,6 @@ def main():
                              if current_race < total_races:
                                  current_race += 1
                                  start_new_race()
-                                 game_state = GameState.RACING
                              else:
                                  game_state = GameState.SERIES_END
                      elif game_state == GameState.SERIES_END:
@@ -304,7 +307,16 @@ def main():
                          elif EXIT_END_SCREEN_BUTTON_RECT.collidepoint(event.pos):
                             running = False
 
-        if game_state == GameState.RACING:
+        if game_state == GameState.RACING or game_state == GameState.PRE_RACE:
+            if game_state == GameState.PRE_RACE:
+                pre_race_timer -= dt
+                if pre_race_timer <= 0:
+                    game_state = GameState.RACING
+                    for boat in all_boats:
+                        boat.race_start_time = current_time_s
+                        boat.lap_start_time = current_time_s
+
+
             keys = pygame.key.get_pressed()
             if keys[pygame.K_LEFT]: player1_boat.turn(-1)
             elif keys[pygame.K_RIGHT]: player1_boat.turn(1)
@@ -328,7 +340,7 @@ def main():
 
             for boat in all_boats:
                 if isinstance(boat, AIBoat):
-                    boat.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt)
+                    boat.ai_update(wind_speed, wind_direction, course_buoys_coords, START_FINISH_LINE, dt, pre_race_timer)
                 
                 boat.update(wind_speed, wind_direction, dt)
                 
@@ -342,44 +354,42 @@ def main():
                 for j in range(i + 1, len(all_boats)):
                     handle_boat_collision(all_boats[i], all_boats[j])
 
-            num_course_buoys = len(course_buoys_coords)
-            for boat in all_boats:
-                if boat.is_finished: continue
-                boat_pos = (boat.world_x, boat.world_y)
-                
-                if boat.race_started and boat.next_buoy_index < num_course_buoys:
-                    current_course_buoy = buoys[course_buoy_list_start_index + boat.next_buoy_index]
-                    if distance_sq(boat_pos, (current_course_buoy.world_x, current_course_buoy.world_y)) < BUOY_ROUNDING_RADIUS**2:
-                        boat.next_buoy_index += 1
-                        if boat.next_buoy_index >= num_course_buoys and boat.current_lap < total_laps:
-                             lap_time = current_time_s - boat.lap_start_time
-                             boat.lap_times.append(lap_time)
-                             boat.current_lap += 1
-                             boat.next_buoy_index = 0
-                             boat.lap_start_time = current_time_s
-                
-                if current_time_s - boat.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
-                    boat_prev_pos = (boat.prev_world_x, boat.prev_world_y)
-                    if check_line_crossing(boat_prev_pos, boat_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
-                        boat.last_line_crossing_time = current_time_s
-                        if not boat.race_started:
-                            boat.race_started = True
-                            boat.race_start_time = current_time_s
-                            boat.lap_start_time = current_time_s
-                            boat.next_buoy_index = 0
-                        elif boat.current_lap >= total_laps and boat.next_buoy_index >= num_course_buoys:
-                            if not boat.is_finished:
-                                boat.is_finished = True
-                                boat.finish_time = current_time_s - boat.race_start_time
+            if game_state == GameState.RACING:
+                num_course_buoys = len(course_buoys_coords)
+                for boat in all_boats:
+                    if boat.is_finished: continue
+                    boat_pos = (boat.world_x, boat.world_y)
+                    
+                    if boat.race_started and boat.next_buoy_index < num_course_buoys:
+                        current_course_buoy = buoys[course_buoy_list_start_index + boat.next_buoy_index]
+                        if distance_sq(boat_pos, (current_course_buoy.world_x, current_course_buoy.world_y)) < BUOY_ROUNDING_RADIUS**2:
+                            boat.next_buoy_index += 1
+                            if boat.next_buoy_index >= num_course_buoys and boat.current_lap < total_laps:
+                                lap_time = current_time_s - boat.lap_start_time
+                                boat.lap_times.append(lap_time)
+                                boat.current_lap += 1
+                                boat.next_buoy_index = 0
+                                boat.lap_start_time = current_time_s
+                    
+                    if current_time_s - boat.last_line_crossing_time > LINE_CROSSING_DEBOUNCE:
+                        boat_prev_pos = (boat.prev_world_x, boat.prev_world_y)
+                        if check_line_crossing(boat_prev_pos, boat_pos, START_FINISH_LINE[0], START_FINISH_LINE[1]):
+                            boat.last_line_crossing_time = current_time_s
+                            if not boat.race_started:
+                                boat.race_started = True
+                            elif boat.current_lap >= total_laps and boat.next_buoy_index >= num_course_buoys:
+                                if not boat.is_finished:
+                                    boat.is_finished = True
+                                    boat.finish_time = current_time_s - boat.race_start_time
 
-            all_players_finished = all(p.is_finished for p in players)
-            if all_players_finished:
-                game_state = GameState.RACE_RESULTS
-                race_results = [{'boat': b, 'time': b.finish_time if b.is_finished else float('inf'), 'laps': b.lap_times} for b in all_boats]
-                race_results.sort(key=lambda x: x['time'])
-                for i, result in enumerate(race_results):
-                    points = POINTS_AWARDED[i] if i < len(POINTS_AWARDED) else 0
-                    result['boat'].score += points
+                all_players_finished = all(p.is_finished for p in players)
+                if all_players_finished:
+                    game_state = GameState.RACE_RESULTS
+                    race_results = [{'boat': b, 'time': b.finish_time if b.is_finished else float('inf'), 'laps': b.lap_times} for b in all_boats]
+                    race_results.sort(key=lambda x: x['time'])
+                    for i, result in enumerate(race_results):
+                        points = POINTS_AWARDED[i] if i < len(POINTS_AWARDED) else 0
+                        result['boat'].score += points
 
         # =====================================================================================
         # --- DRAWING ---
@@ -408,7 +418,7 @@ def main():
             
             draw_button(screen, start_button_rect, "Start Series", button_font, BUTTON_COLOR, BUTTON_TEXT_COLOR, BUTTON_HOVER_COLOR)
 
-        elif game_state == GameState.RACING or game_state == GameState.PAUSED:
+        elif game_state in [GameState.PRE_RACE, GameState.RACING, GameState.PAUSED]:
             race_info_pack = {
                 'wind_speed': wind_speed, 'wind_dir': wind_direction,
                 'current_race': current_race, 'total_races': total_races,
@@ -432,6 +442,17 @@ def main():
                 draw_map(screen, player2_boat, ai_boats, sandbars, buoys, player2_boat.next_buoy_index, START_FINISH_LINE, MAP_RECT_P2, WORLD_BOUNDS, players)
 
             draw_wind_gauge(screen, wind_direction, WIND_GAUGE_POS, WIND_GAUGE_RADIUS, lap_font)
+
+            if game_state == GameState.PRE_RACE and pre_race_timer > 0:
+                timer_text = str(math.ceil(pre_race_timer))
+                # Draw black border
+                for dx, dy in [(-2, -2), (2, -2), (-2, 2), (2, 2)]:
+                    border_surf = countdown_font.render(timer_text, True, BLACK)
+                    screen.blit(border_surf, (CENTER_X - border_surf.get_width() // 2 + dx, 10 + dy))
+                # Draw white text
+                timer_surf = countdown_font.render(timer_text, True, WHITE)
+                screen.blit(timer_surf, (CENTER_X - timer_surf.get_width() // 2, 10))
+
 
             if game_state == GameState.PAUSED:
                 draw_pause_menu(screen, title_font)

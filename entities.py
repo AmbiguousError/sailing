@@ -304,6 +304,7 @@ class AIBoat(Boat):
         self.tack_decision_time = 0
         self.time_at_current_buoy = 0.0
         self.last_buoy_index = -1
+        self.staging_point = None
 
         if self.style == SailingStyle.PERFECTIONIST:
             self.turn_rate_modifier = random.uniform(1.0, 1.1)
@@ -331,30 +332,44 @@ class AIBoat(Boat):
             self.heading_error = 0
             self.tack_anticipation = 0
 
-    def ai_update(self, wind_speed, wind_direction, course_buoys, start_finish_line, dt):
+    def ai_update(self, wind_speed, wind_direction, course_buoys, start_finish_line, dt, pre_race_timer):
         """The brain of the AI boat. Sets rudder and sail intentions."""
         if self.is_finished:
             self.speed *= 0.98
             return
+        
+        # Pre-race starting strategy
+        if pre_race_timer > 0:
+            # First, set a staging point behind the line
+            if self.staging_point is None:
+                self.staging_point = (self.world_x - 100, self.world_y + random.uniform(-50, 50))
 
-        if self.next_buoy_index != self.last_buoy_index:
-            self.time_at_current_buoy = 0.0
-            self.last_buoy_index = self.next_buoy_index
-        else:
-            self.time_at_current_buoy += dt
+            # If more than 5 seconds left, sail to the staging point
+            if pre_race_timer > 5:
+                target = self.staging_point
+            # In the last 5 seconds, aim for the line to get a good start
+            else:
+                 target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
+                           (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+        else: # Normal race logic
+            if self.next_buoy_index != self.last_buoy_index:
+                self.time_at_current_buoy = 0.0
+                self.last_buoy_index = self.next_buoy_index
+            else:
+                self.time_at_current_buoy += dt
 
-        if self.time_at_current_buoy > 12.0:
-            wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
-            if wind_angle_rel_boat > 0: self.turn(-1.5)
-            else: self.turn(1.5)
-            self.time_at_current_buoy = 0
-            return 
+            if self.time_at_current_buoy > 12.0:
+                wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
+                if wind_angle_rel_boat > 0: self.turn(-1.5)
+                else: self.turn(1.5)
+                self.time_at_current_buoy = 0
+                return 
 
-        dist_from_center_sq = self.world_x**2 + self.world_y**2
-        if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2:
-            target = (0, 0)
-        else:
-            target = self.get_current_target(course_buoys, start_finish_line)
+            dist_from_center_sq = self.world_x**2 + self.world_y**2
+            if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2:
+                target = (0, 0)
+            else:
+                target = self.get_current_target(course_buoys, start_finish_line)
 
         if self.speed < 1.5 and self.wind_effectiveness < 0.1:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
