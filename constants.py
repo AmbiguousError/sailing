@@ -4,13 +4,11 @@ import pygame
 import math
 
 # --- Screen & World ---
-# Initialize Pygame temporarily to get screen info
 pygame.init()
 info = pygame.display.Info()
-# Set the screen size to the current monitor's resolution
 SCREEN_WIDTH = info.current_w
 SCREEN_HEIGHT = info.current_h
-pygame.quit() # Quit the temporary instance
+pygame.quit()
 
 CENTER_X = SCREEN_WIDTH // 2
 CENTER_Y = SCREEN_HEIGHT // 2
@@ -25,8 +23,8 @@ YELLOW = (233, 196, 106)
 GRAY = (150, 150, 150)
 OPTIMAL_SAIL_COLOR = (0, 200, 255, 150)
 SAIL_COLOR = (245, 245, 245)
-WAKE_COLOR = (200, 220, 255)
-MAP_BG_COLOR = (0, 69, 107, 180) # Darker sea blue for UI
+WAKE_COLOR = (220, 235, 255)
+MAP_BG_COLOR = (0, 69, 107, 180)
 MAP_BORDER_COLOR = (200, 200, 200)
 MAP_BOAT_COLOR = (233, 196, 106)
 BUTTON_COLOR = pygame.Color("#264653")
@@ -36,19 +34,20 @@ BUOY_COLOR = pygame.Color("#E76F51")
 START_FINISH_BUOY_COLOR = pygame.Color("#F4A261")
 START_FINISH_LINE_COLOR = WHITE
 NEXT_BUOY_INDICATOR_COLOR = (0, 255, 0)
+HUD_BG_COLOR = (0, 0, 0, 100)
 
 # Ocean-themed pastel palette
-BLUE = pygame.Color("#A8DADC") # Base ocean color
-DARK_BLUE = pygame.Color("#1D3557") # Deepest ocean for the base fill
+BLUE = pygame.Color("#A8DADC")
+DARK_BLUE = pygame.Color("#1D3557")
 DEPTH_COLORS = [pygame.Color("#457B9D"), pygame.Color("#A8DADC")]
 SHALLOW_COLORS = [pygame.Color("#2A9D8F"), pygame.Color("#E9C46A")]
-SAND_COLOR = pygame.Color("#F1FAEE") # Lightest shallow areas/sand
+SAND_COLOR = pygame.Color("#F1FAEE")
 DARK_SAND_COLOR = pygame.Color("#A8DADC")
-LIGHT_BLUE = (100, 150, 200) # Original light blue for waves
+LIGHT_BLUE = (173, 216, 230) # A lighter, more visible blue for waves
 
 
 # --- Boat Properties ---
-BOAT_TURN_SPEED = 2.5  # Increased from 2.0
+BOAT_TURN_SPEED = 2.5
 BOAT_ACCEL_FACTOR = 0.08
 BOAT_DRAG = 0.985
 BOAT_COLLISION_SPEED_REDUCTION = 0.95
@@ -56,7 +55,7 @@ SANDBAR_DRAG_MULTIPLIER = 25.0
 NO_POWER_DECEL = 0.75
 MAX_BOAT_SPEED = 15.0
 MIN_TURN_EFFECTIVENESS = 0.15
-SAIL_TRIM_SPEED = 1.5 # Increased from 1.0
+SAIL_TRIM_SPEED = 1.5
 MAX_SAIL_ANGLE_REL = 85
 SAIL_LENGTH = 35
 SAIL_MAX_CURVE = 8
@@ -64,10 +63,10 @@ MIN_SAILING_ANGLE = 45
 OPTIMAL_INDICATOR_LENGTH = 25
 NUM_AI_BOATS = 4
 AI_BOAT_COLORS = [
-    pygame.Color("#E63946"), # Red
-    pygame.Color("#F4A261"), # Orange
-    pygame.Color("#2A9D8F"), # Green
-    pygame.Color("#457B9D"), # Blue
+    pygame.Color("#E63946"),
+    pygame.Color("#F4A261"),
+    pygame.Color("#2A9D8F"),
+    pygame.Color("#457B9D"),
 ]
 
 
@@ -80,23 +79,23 @@ WIND_UPDATE_INTERVAL = 200
 
 # --- Environment Properties ---
 NUM_WAVE_LAYERS = 3
-WAVE_LAYER_ALPHA = 40 # Reduced alpha for subtlety
+WAVE_LAYER_ALPHA = 60 # Increased for more visibility
 WAVE_LINE_THICKNESS = 1
 WAVE_SCROLL_SPEED_BASE = [0.4, 0.6, 0.8]
-WAVE_DENSITY = 100
-NUM_SANDBARS = 15
-MIN_SANDBAR_SIZE = 60
-MAX_SANDBAR_SIZE = 200
+WAVE_DENSITY = 150
+NUM_SANDBARS = 25 # More sandbars for a richer world
+MIN_SANDBAR_SIZE = 80
+MAX_SANDBAR_SIZE = 250
 MIN_SANDBAR_VERTICES = 7
 MAX_SANDBAR_VERTICES = 12
 SANDBAR_RADIUS_VARIATION = 0.4
 MIN_OBJ_SEPARATION = 150
 
 # --- Wake Properties ---
-MAX_WAKE_PARTICLES = 100
-WAKE_SPAWN_INTERVAL = 0.05
-WAKE_LIFETIME = 1.5
-WAKE_START_SIZE = 4
+MAX_WAKE_PARTICLES = 150
+WAKE_SPAWN_INTERVAL = 0.04
+WAKE_LIFETIME = 2.0
+WAKE_START_SIZE = 5
 WAKE_END_SIZE = 1
 
 # --- Course & Race Properties ---
@@ -108,7 +107,7 @@ START_FINISH_WIDTH = 10
 BUOY_RADIUS = 15
 BUOY_ROUNDING_RADIUS = 40
 LINE_CROSSING_DEBOUNCE = 1.0
-POINTS_AWARDED = [5, 4, 3, 2, 1, 0] # Points for 1st, 2nd, etc.
+POINTS_AWARDED = [5, 4, 3, 2, 1, 0]
 
 # --- UI Properties ---
 MAP_WIDTH = 150
