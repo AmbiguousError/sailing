@@ -61,16 +61,26 @@ class Boat:
         self.name = name
         self.score = 0
         self.color = boat_color
-        self.base_shape = [(20, 0), (-10, -7), (-15, 0), (-10, 7)]
+        # --- New, more detailed hull shape ---
+        self.base_shape = [
+            (25, 0), (20, -4), (5, -8), (-15, -8),
+            (-20, -5), (-20, 5), (-15, 8), (5, 8), (20, 4)
+        ]
+        # --- Shape for the deck/cockpit ---
+        self.deck_shape = [
+            (18, 0), (15, -2.5), (5, -5), (-13, -5),
+            (-17, -3), (-17, 3), (-13, 5), (5, 5), (15, 2.5)
+        ]
         self.rotated_shape = self.base_shape[:]
-        self.mast_pos_rel = (5, 0)
+        self.rotated_deck_shape = self.deck_shape[:]
+        self.mast_pos_rel = (8, 0) # Moved mast slightly forward
         self.mast_pos_abs = (0, 0)
         self.sail_curve_points = []
-        self.collision_radius = 15
+        self.collision_radius = 18 # Slightly increased collision radius
         self.wake_particles = deque()
         self.time_since_last_wake = 0.0
         self.last_line_crossing_time = 0.0
-        
+
         # Race progress attributes
         self.race_started = False
         self.is_finished = False
@@ -162,8 +172,22 @@ class Boat:
 
     def draw(self, surface):
         self.rotate_and_position()
+
+        # --- Enhanced Drawing ---
+        # 1. Darker color for shading
+        darker_color = (max(0, self.color[0] - 40), max(0, self.color[1] - 40), max(0, self.color[2] - 40))
+
+        # 2. Draw main hull
         pygame.draw.polygon(surface, self.color, self.rotated_shape)
-        pygame.draw.lines(surface, BLACK, True, self.rotated_shape, 1)
+        pygame.draw.polygon(surface, BLACK, self.rotated_shape, 2) # Thicker border
+
+        # 3. Draw deck/cockpit area
+        pygame.draw.polygon(surface, darker_color, self.rotated_deck_shape)
+        pygame.draw.polygon(surface, BLACK, self.rotated_deck_shape, 1)
+
+        # 4. Draw Mast
+        pygame.draw.circle(surface, BLACK, (int(self.mast_pos_abs[0]), int(self.mast_pos_abs[1])), 3)
+        # --- End Enhanced Drawing ---
 
         self.update_sail_curve(self.visual_sail_angle_rel)
         if self.optimal_sail_trim != 0 or self.wind_effectiveness > 0:
@@ -183,10 +207,17 @@ class Boat:
         rad = deg_to_rad(self.heading)
         cos_a = math.cos(rad)
         sin_a = math.sin(rad)
+        # Rotate hull
         for i, (x, y) in enumerate(self.base_shape):
             rx = x * cos_a - y * sin_a
             ry = x * sin_a + y * cos_a
             self.rotated_shape[i] = (rx + self.screen_x, ry + self.screen_y)
+        # Rotate deck
+        for i, (x, y) in enumerate(self.deck_shape):
+            rx = x * cos_a - y * sin_a
+            ry = x * sin_a + y * cos_a
+            self.rotated_deck_shape[i] = (rx + self.screen_x, ry + self.screen_y)
+
         mast_rel_x, mast_rel_y = self.mast_pos_rel
         mast_rot_x = mast_rel_x * cos_a - mast_rel_y * sin_a
         mast_rot_y = mast_rel_x * sin_a + mast_rel_y * cos_a
@@ -223,7 +254,7 @@ class Boat:
                 particle_y = self.world_y + spawn_dy + rand_y
                 self.wake_particles.append(WakeParticle(particle_x, particle_y))
                 self.time_since_last_wake = 0.0
-        
+
         particles_to_keep = deque()
         while self.wake_particles:
              particle = self.wake_particles.popleft()
