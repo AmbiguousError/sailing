@@ -29,14 +29,19 @@ def handle_boat_collision(boat1, boat2):
         dx = boat2.world_x - boat1.world_x
         dy = boat2.world_y - boat1.world_y
         
+        if dist == 0:
+            dx, dy, dist = 1, 0, 1
+            
         nx = dx / dist
         ny = dy / dist
 
+        # Push boats apart based on overlap
         boat1.world_x -= nx * overlap * 0.5
         boat1.world_y -= ny * overlap * 0.5
         boat2.world_x += nx * overlap * 0.5
         boat2.world_y += ny * overlap * 0.5
 
+        # Reduce speed of both boats
         boat1.speed *= BOAT_COLLISION_SPEED_REDUCTION
         boat2.speed *= BOAT_COLLISION_SPEED_REDUCTION
 
@@ -46,13 +51,11 @@ def render_view(surface, camera_boat, players, ai_boats, sandbars, buoys, start_
     world_offset_y = camera_boat.world_y
     view_center = (surface.get_width() // 2, surface.get_height() // 2)
 
-    # Draw background from the pre-generated depth map
     area_x = (world_offset_x - view_center[0]) + WORLD_BOUNDS
     area_y = (world_offset_y - view_center[1]) + WORLD_BOUNDS
     view_rect_on_depth_map = pygame.Rect(area_x, area_y, surface.get_width(), surface.get_height())
     surface.blit(depth_map, (0,0), area=view_rect_on_depth_map)
 
-    # Draw scrolling waves on top
     draw_scrolling_water(surface, wave_layers, wave_offsets, deg_to_rad(wind_direction), dt)
 
     for boat in players + ai_boats:
@@ -196,8 +199,7 @@ def main():
 
         ai_boats.clear()
         available_colors = AI_BOAT_COLORS[:]
-        num_ai = NUM_AI_BOATS if num_players == 1 else NUM_AI_BOATS - 1
-        for i in range(num_ai):
+        for i in range(NUM_AI_BOATS):
             color = random.choice(available_colors) if available_colors else GRAY
             if color in available_colors: available_colors.remove(color)
             ai_boats.append(AIBoat(0, 0, f"AI {i+1}", random.choice(list(SailingStyle)), color))

@@ -337,29 +337,25 @@ class AIBoat(Boat):
             self.speed *= 0.98
             return
 
-        # Update timer for current buoy to detect if stuck
         if self.next_buoy_index != self.last_buoy_index:
             self.time_at_current_buoy = 0.0
             self.last_buoy_index = self.next_buoy_index
         else:
             self.time_at_current_buoy += dt
 
-        # Get unstuck logic
-        if self.time_at_current_buoy > 12.0: # Reduced timer to 12 seconds
+        if self.time_at_current_buoy > 12.0:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
             if wind_angle_rel_boat > 0: self.turn(-1.5)
             else: self.turn(1.5)
             self.time_at_current_buoy = 0
             return 
 
-        # Tether to keep AI from sailing off the map
         dist_from_center_sq = self.world_x**2 + self.world_y**2
         if dist_from_center_sq > (WORLD_BOUNDS * 1.5)**2:
             target = (0, 0)
         else:
             target = self.get_current_target(course_buoys, start_finish_line)
 
-        # Stall recovery logic
         if self.speed < 1.5 and self.wind_effectiveness < 0.1:
             wind_angle_rel_boat = angle_difference(wind_direction, self.heading)
             if abs(wind_angle_rel_boat) < MIN_SAILING_ANGLE + 10:
@@ -385,16 +381,19 @@ class AIBoat(Boat):
 
 
     def get_current_target(self, course_buoys, start_finish_line):
+        """Determines the AI's current navigation target."""
+        base_target = None
         if not self.race_started:
-            # Before crossing start, aim for the middle of the line
+            if course_buoys:
+                base_target = course_buoys[0] 
+            else: 
+                 base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
+                               (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
+        elif self.next_buoy_index < len(course_buoys):
+            base_target = course_buoys[self.next_buoy_index]
+        else:
             base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
                            (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
-        else:
-            if self.next_buoy_index >= 0 and self.next_buoy_index < len(course_buoys):
-                base_target = course_buoys[self.next_buoy_index]
-            else: # Heading for the finish line
-                base_target = ((start_finish_line[0][0] + start_finish_line[1][0]) / 2,
-                               (start_finish_line[0][1] + start_finish_line[1][1]) / 2)
 
         offset_factor = 1.0
         if self.style == SailingStyle.CAUTIOUS: offset_factor = 1.5
