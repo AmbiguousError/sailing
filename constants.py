@@ -36,13 +36,16 @@ START_FINISH_LINE_COLOR = WHITE
 NEXT_BUOY_INDICATOR_COLOR = (0, 255, 0)
 HUD_BG_COLOR = (0, 0, 0, 100)
 
-# Ocean-themed pastel palette
-BLUE = pygame.Color("#A8DADC")
-DARK_BLUE = pygame.Color("#1D3557")
-DEPTH_COLORS = [pygame.Color("#457B9D"), pygame.Color("#A8DADC")]
-SHALLOW_COLORS = [pygame.Color("#2A9D8F"), pygame.Color("#E9C46A")]
-SAND_COLOR = pygame.Color("#F1FAEE")
-DARK_SAND_COLOR = pygame.Color("#A8DADC")
+# --- NEW Lighter Pastel Ocean Palette ---
+# Base deep ocean color
+DARK_BLUE = pygame.Color("#4A90E2")
+# Lighter shades for the shallows around sandbars
+DEPTH_COLORS = [pygame.Color("#55A6D9"), pygame.Color("#78C2C4")]
+# Even lighter shades for the shallowest areas
+SHALLOW_COLORS = [pygame.Color("#A2D5F2"), pygame.Color("#BDE4F4")]
+# Colors for the sandbars themselves
+SAND_COLOR = pygame.Color("#F9ECCB")  # Light sandy beige
+DARK_SAND_COLOR = pygame.Color("#E5D8B3") # Darker sandy color for borders/minimap
 LIGHT_BLUE = (173, 216, 230) # A lighter, more visible blue for waves
 
 
