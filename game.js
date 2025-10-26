@@ -7,7 +7,7 @@ const WORLD_BOUNDS = 1000;
 const BOAT_ACCEL_FACTOR = 0.1;
 const BOAT_TURN_SPEED = 1.0;
 const MAX_BOAT_SPEED = 5.0;
-const SAIL_TRIM_SPEED = 1.0;
+const SAIL_TRIM_SPEED = 2.0;
 const MAX_SAIL_ANGLE_REL = 90;
 const MIN_SAILING_ANGLE = 45;
 const WAKE_LIFETIME = 2.0;
@@ -398,6 +398,8 @@ class Buoy {
 // Game Loop
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const windArrow = document.getElementById('wind-arrow');
+const speedReading = document.getElementById('speed-reading');
 
 let player1Boat;
 let sandbars = [];
@@ -427,14 +429,27 @@ function setup() {
     window.addEventListener('keydown', (e) => keys[e.key] = true);
     window.addEventListener('keyup', (e) => keys[e.key] = false);
 
-    document.getElementById('turn-left').addEventListener('touchstart', () => keys['ArrowLeft'] = true);
-    document.getElementById('turn-left').addEventListener('touchend', () => keys['ArrowLeft'] = false);
-    document.getElementById('turn-right').addEventListener('touchstart', () => keys['ArrowRight'] = true);
-    document.getElementById('turn-right').addEventListener('touchend', () => keys['ArrowRight'] = false);
-    document.getElementById('trim-up').addEventListener('touchstart', () => keys['ArrowUp'] = true);
-    document.getElementById('trim-up').addEventListener('touchend', () => keys['ArrowUp'] = false);
-    document.getElementById('trim-down').addEventListener('touchstart', () => keys['ArrowDown'] = true);
-    document.getElementById('trim-down').addEventListener('touchend', () => keys['ArrowDown'] = false);
+    const keyMap = {
+        'turn-left': 'ArrowLeft',
+        'turn-right': 'ArrowRight',
+        'trim-up': 'ArrowUp',
+        'trim-down': 'ArrowDown'
+    };
+
+    for (const [id, key] of Object.entries(keyMap)) {
+        const button = document.getElementById(id);
+        button.addEventListener('mousedown', () => keys[key] = true);
+        button.addEventListener('mouseup', () => keys[key] = false);
+        button.addEventListener('mouseleave', () => keys[key] = false);
+        button.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            keys[key] = true;
+        });
+        button.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            keys[key] = false;
+        });
+    }
 }
 
 function handleInput() {
@@ -477,6 +492,10 @@ function render() {
     player1Boat.screenX = viewCenter[0];
     player1Boat.screenY = viewCenter[1];
     player1Boat.draw(ctx);
+
+    // Update HUD
+    windArrow.style.transform = `translate(-50%, -50%) rotate(${windDirection}deg)`;
+    speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
 }
 
 

@@ -8,6 +8,14 @@
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+        <div id="wind-indicator">
+            <svg id="wind-arrow" width="50" height="50" viewBox="0 0 100 100">
+                <path d="M50 0 L60 20 L50 15 L40 20 Z" fill="white"/>
+            </svg>
+        </div>
+        <div id="speed-reading">Speed: 0.0</div>
+    </div>
     <div id="touch-controls">
         <div class="control-area left">
             <button id="turn-left">⟲</button>
