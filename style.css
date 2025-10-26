@@ -1,0 +1,78 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #000;
+}
+
+canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#gameCanvas {
+    background-color: transparent;
+}
+
+#hud {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: white;
+}
+
+#wind-indicator {
+    width: 100px;
+    height: 100px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="48" stroke="white" stroke-width="2" fill="none"/><path d="M50 0 L50 10 M50 90 L50 100 M0 50 L10 50 M90 50 L100 50" stroke="white" stroke-width="2"/></svg>');
+    background-size: contain;
+    position: relative;
+}
+
+#wind-arrow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-origin: center center;
+}
+
+#speed-reading {
+    margin-top: 10px;
+    font-size: 24px;
+}
+
+#mini-map {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 200px;
+    height: 200px;
+    border: 2px solid white;
+}
+
+#touch-controls {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.control-area {
+    display: flex;
+    flex-direction: column;
+}
+
+.control-area button {
+    width: 60px;
+    height: 60px;
+    margin: 10px;
+    font-size: 24px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: 2px solid white;
+    border-radius: 50%;
+    pointer-events: auto;
+}
