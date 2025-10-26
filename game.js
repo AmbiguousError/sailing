@@ -171,6 +171,14 @@ class Boat {
         const windAngleRelBoat = angle_difference(windDirection, this.heading);
         const absWindAngleRelBoat = Math.abs(windAngleRelBoat);
 
+        const naturalSailAngle = angle_difference(180, windAngleRelBoat);
+        const clampedNaturalSailAngle = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, naturalSailAngle));
+        if (clampedNaturalSailAngle < 0) {
+            this.visualSailAngleRel = Math.max(clampedNaturalSailAngle, this.sailAngleRel);
+        } else {
+            this.visualSailAngleRel = Math.min(clampedNaturalSailAngle, this.sailAngleRel);
+        }
+
         let forceMagnitude = 0;
         this.windEffectiveness = 0.0;
         this.optimalSailTrim = 0.0;
@@ -400,6 +408,8 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const windArrow = document.getElementById('wind-arrow');
 const speedReading = document.getElementById('speed-reading');
+const miniMap = document.getElementById('mini-map');
+const miniMapCtx = miniMap.getContext('2d');
 
 let player1Boat;
 let sandbars = [];
@@ -496,6 +506,33 @@ function render() {
     // Update HUD
     windArrow.style.transform = `translate(-50%, -50%) rotate(${windDirection}deg)`;
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
+
+    drawMiniMap();
+}
+
+function drawMiniMap() {
+    const mapSize = 200;
+    const worldScale = mapSize / (WORLD_BOUNDS * 2);
+
+    miniMapCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    miniMapCtx.fillRect(0, 0, mapSize, mapSize);
+
+    const playerX = player1Boat.worldX * worldScale + mapSize / 2;
+    const playerY = player1Boat.worldY * worldScale + mapSize / 2;
+
+    miniMapCtx.fillStyle = 'blue';
+    miniMapCtx.beginPath();
+    miniMapCtx.arc(playerX, playerY, 5, 0, 2 * Math.PI);
+    miniMapCtx.fill();
+
+    buoys.forEach(b => {
+        const buoyX = b.worldX * worldScale + mapSize / 2;
+        const buoyY = b.worldY * worldScale + mapSize / 2;
+        miniMapCtx.fillStyle = b.color;
+        miniMapCtx.beginPath();
+        miniMapCtx.arc(buoyX, buoyY, 3, 0, 2 * Math.PI);
+        miniMapCtx.fill();
+    });
 }
 
 

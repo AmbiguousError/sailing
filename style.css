@@ -35,6 +35,15 @@ canvas {
     font-size: 24px;
 }
 
+#mini-map {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 200px;
+    height: 200px;
+    border: 2px solid white;
+}
+
 #touch-controls {
     position: absolute;
     bottom: 20px;
