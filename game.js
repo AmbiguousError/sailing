@@ -61,6 +61,37 @@ function distance_sq(p1, p2) {
 }
 
 
+class Wave {
+    constructor() {
+        this.y = Math.random() * window.innerHeight;
+        this.x = Math.random() * window.innerWidth;
+        this.speed = Math.random() * 0.5 + 0.5;
+        this.amplitude = Math.random() * 10 + 5;
+        this.frequency = Math.random() * 0.02 + 0.01;
+        this.width = Math.random() * 2 + 1;
+    }
+
+    update() {
+        this.x += this.speed;
+        if (this.x > window.innerWidth) {
+            this.x = 0;
+            this.y = Math.random() * window.innerHeight;
+        }
+    }
+
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        for (let i = 0; i < window.innerWidth; i++) {
+            ctx.lineTo(i, this.y + Math.sin(i * this.frequency) * this.amplitude);
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = this.width;
+        ctx.stroke();
+    }
+}
+
+
 class WakeParticle {
     constructor(worldX, worldY) {
         this.worldX = worldX;
@@ -406,6 +437,8 @@ class Buoy {
 // Game Loop
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const waveCanvas = document.getElementById('waveCanvas');
+const waveCtx = waveCanvas.getContext('2d');
 const windArrow = document.getElementById('wind-arrow');
 const speedReading = document.getElementById('speed-reading');
 const miniMap = document.getElementById('mini-map');
@@ -414,6 +447,7 @@ const miniMapCtx = miniMap.getContext('2d');
 let player1Boat;
 let sandbars = [];
 let buoys = [];
+let waves = [];
 let windSpeed = 5.0;
 let windDirection = 45.0;
 let lastTime = 0;
@@ -422,6 +456,8 @@ const keys = {};
 function setup() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    waveCanvas.width = window.innerWidth;
+    waveCanvas.height = window.innerHeight;
 
     player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "blue");
     player1Boat.worldX = 0;
@@ -431,8 +467,23 @@ function setup() {
         sandbars.push(new Sandbar(Math.random() * 1000 - 500, Math.random() * 1000 - 500, 100));
     }
 
-    for (let i = 0; i < 3; i++) {
-        buoys.push(new Buoy(Math.random() * 800 - 400, Math.random() * 800 - 400, i));
+    const buoyPositions = [
+        [-400, -400],
+        [400, -400],
+        [400, 400],
+        [-400, 400]
+    ];
+
+    for (let i = 0; i < buoyPositions.length; i++) {
+        const buoy = new Buoy(buoyPositions[i][0], buoyPositions[i][1], i);
+        if (i === 0) {
+            buoy.color = 'green';
+        }
+        buoys.push(buoy);
+    }
+
+    for (let i = 0; i < 20; i++) {
+        waves.push(new Wave());
     }
 
     // Event Listeners
@@ -484,11 +535,13 @@ function gameLoop(timestamp) {
 
 function update(dt) {
     player1Boat.update(windSpeed, windDirection, dt);
+    waves.forEach(w => w.update());
 }
 
 function render() {
-    ctx.fillStyle = WATER_COLOR;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    renderWaves();
 
     const worldOffsetX = player1Boat.worldX;
     const worldOffsetY = player1Boat.worldY;
@@ -510,11 +563,17 @@ function render() {
     drawMiniMap();
 }
 
+function renderWaves() {
+    waveCtx.fillStyle = WATER_COLOR;
+    waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+    waves.forEach(w => w.draw(waveCtx));
+}
+
 function drawMiniMap() {
     const mapSize = 200;
     const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    miniMapCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    miniMapCtx.fillStyle = WATER_COLOR;
     miniMapCtx.fillRect(0, 0, mapSize, mapSize);
 
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
