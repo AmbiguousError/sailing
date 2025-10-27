@@ -13,6 +13,11 @@ canvas {
 
 #gameCanvas {
     background-color: transparent;
+    z-index: 1;
+}
+
+#waveCanvas {
+    z-index: 0;
 }
 
 #hud {
@@ -20,6 +25,7 @@ canvas {
     top: 20px;
     left: 20px;
     color: white;
+    z-index: 2;
 }
 
 #wind-indicator {
@@ -49,6 +55,7 @@ canvas {
     width: 200px;
     height: 200px;
     border: 2px solid white;
+    z-index: 2;
 }
 
 #touch-controls {
@@ -58,6 +65,7 @@ canvas {
     display: flex;
     justify-content: space-between;
     pointer-events: none;
+    z-index: 2;
 }
 
 .control-area {

@@ -17,6 +17,7 @@ const BOAT_DRAG = 0.95;
 const MIN_TURN_EFFECTIVENESS = 0.2;
 const SANDBAR_DRAG_MULTIPLIER = 0.8;
 const NO_POWER_DECEL = 0.1;
+const BUOY_ROUNDING_RADIUS = 50;
 
 const WHITE = 'white';
 const BLACK = 'black';
@@ -159,10 +160,10 @@ class Boat {
         this.lastLineCrossingTime = 0.0;
 
         // Race progress attributes
-        this.raceStarted = false;
+        this.raceStarted = true;
         this.isFinished = false;
         this.currentLap = 1;
-        this.nextBuoyIndex = -1;
+        this.nextBuoyIndex = 0;
         this.lapStartTime = 0.0;
         this.raceStartTime = 0.0;
         this.finishTime = 0.0;
@@ -354,19 +355,6 @@ class Boat {
 
 }
 
-class AIBoat extends Boat {
-    constructor(worldX, worldY, name, sailingStyle, color) {
-        super(0, 0, name, color);
-        this.worldX = worldX;
-        this.worldY = worldY;
-        this.style = sailingStyle;
-        this.tackDecisionTime = 0;
-        this.timeAtCurrentBuoy = 0.0;
-        this.lastBuoyIndex = -1;
-        this.stagingPoint = null;
-    }
-}
-
 class Sandbar {
     constructor(worldX, worldY, size) {
         this.worldX = worldX;
@@ -536,6 +524,15 @@ function gameLoop(timestamp) {
 function update(dt) {
     player1Boat.update(windSpeed, windDirection, dt);
     waves.forEach(w => w.update());
+
+    // Buoy collision
+    if (player1Boat.nextBuoyIndex < buoys.length) {
+        const nextBuoy = buoys[player1Boat.nextBuoyIndex];
+        const distSq = distance_sq([player1Boat.worldX, player1Boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
+        if (distSq < BUOY_ROUNDING_RADIUS * BUOY_ROUNDING_RADIUS) {
+            player1Boat.nextBuoyIndex++;
+        }
+    }
 }
 
 function render() {
@@ -550,7 +547,11 @@ function render() {
     player1Boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
     sandbars.forEach(s => s.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
-    buoys.forEach(b => b.draw(ctx, worldOffsetX, worldOffsetY, false, viewCenter));
+
+    buoys.forEach((b, i) => {
+        const isNext = i === player1Boat.nextBuoyIndex;
+        b.draw(ctx, worldOffsetX, worldOffsetY, isNext, viewCenter);
+    });
 
     player1Boat.screenX = viewCenter[0];
     player1Boat.screenY = viewCenter[1];
