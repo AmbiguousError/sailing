@@ -1,7 +1,7 @@
 body {
     margin: 0;
     overflow: hidden;
-    background-color: #000;
+    background-color: #AADDDE;
 }
 
 canvas {
@@ -24,26 +24,33 @@ canvas {
     position: absolute;
     top: 20px;
     left: 20px;
-    color: white;
+    color: #333333;
     z-index: 2;
 }
 
 #wind-indicator {
     width: 100px;
     height: 100px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="48" stroke="white" stroke-width="2" fill="none"/><path d="M50 0 L50 10 M50 90 L50 100 M0 50 L10 50 M90 50 L100 50" stroke="white" stroke-width="2"/></svg>');
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="48" stroke="#333333" stroke-width="2" fill="none"/><path d="M50 0 L50 10 M50 90 L50 100 M0 50 L10 50 M90 50 L100 50" stroke="#333333" stroke-width="2"/></svg>');
     background-size: contain;
     position: relative;
 }
 
 #wind-arrow {
     position: absolute;
-    top: 50%;
-    left: 50%;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     transform-origin: center center;
 }
 
 #speed-reading {
+    margin-top: 10px;
+    font-size: 24px;
+}
+
+#laps {
     margin-top: 10px;
     font-size: 24px;
 }
@@ -54,7 +61,7 @@ canvas {
     right: 20px;
     width: 200px;
     height: 200px;
-    border: 2px solid white;
+    border: 2px solid #333333;
     z-index: 2;
 }
 
@@ -78,9 +85,9 @@ canvas {
     height: 60px;
     margin: 10px;
     font-size: 24px;
-    background-color: rgba(0, 0, 0, 0.5);
-    color: white;
-    border: 2px solid white;
+    background-color: rgba(255, 255, 255, 0.5);
+    color: #333333;
+    border: 2px solid #333333;
     border-radius: 50%;
     pointer-events: auto;
 }
