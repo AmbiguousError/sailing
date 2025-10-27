@@ -3,7 +3,7 @@
 // Constants adapted from constants.py
 const SCREEN_WIDTH = 800;
 const SCREEN_HEIGHT = 600;
-const WORLD_BOUNDS = 1000;
+const WORLD_BOUNDS = 2000;
 const BOAT_ACCEL_FACTOR = 0.1;
 const BOAT_TURN_SPEED = 1.0;
 const MAX_BOAT_SPEED = 5.0;
@@ -61,6 +61,40 @@ function distance_sq(p1, p2) {
     return dx * dx + dy * dy;
 }
 
+
+class WindParticle {
+    constructor(windDirection, windSpeed) {
+        this.windDirection = windDirection;
+        this.windSpeed = windSpeed;
+        this.x = Math.random() * window.innerWidth;
+        this.y = Math.random() * window.innerHeight;
+        this.speed = (Math.random() * 0.5 + 0.5) * (this.windSpeed / 5.0);
+        this.length = Math.random() * 10 + 5;
+    }
+
+    update() {
+        const rad = deg_to_rad(this.windDirection);
+        this.x += Math.cos(rad) * this.speed;
+        this.y += Math.sin(rad) * this.speed;
+
+        if (this.x > window.innerWidth) this.x = 0;
+        if (this.x < 0) this.x = window.innerWidth;
+        if (this.y > window.innerHeight) this.y = 0;
+        if (this.y < 0) this.y = window.innerHeight;
+    }
+
+    draw(ctx) {
+        const rad = deg_to_rad(this.windDirection);
+        const endX = this.x + Math.cos(rad) * this.length;
+        const endY = this.y + Math.sin(rad) * this.length;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(endX, endY);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+}
 
 class Wave {
     constructor(windDirection, windSpeed) {
@@ -384,19 +418,17 @@ class AIBoat extends Boat {
             this.turn(0);
         }
 
-        // Simple sail trim logic
+        // Sail trim logic
         const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
         const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
 
         if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
+            // If we can sail, set sail to optimal angle
             const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
-            const trim_diff = angle_difference(this.sailAngleRel, optimal_trim);
-
-            if (trim_diff > 5) {
-                this.trimSail(1);
-            } else if (trim_diff < -5) {
-                this.trimSail(-1);
-            }
+            this.sailAngleRel = optimal_trim;
+        } else {
+            // If in irons, turn away from the wind to get power
+            this.turn(Math.sign(wind_angle_rel_boat) || 1);
         }
     }
 }
@@ -451,14 +483,22 @@ class Buoy {
         this.index = index;
         this.radius = 10;
         this.isGate = isGate;
-        this.color = isGate ? START_FINISH_BUOY_COLOR : BUOY_COLOR;
+        this.isPassed = false;
+        this.color = isGate ? START_FINISH_BUOY_COLOR : NEXT_BUOY_INDICATOR_COLOR;
     }
 
     draw(ctx, offsetX, offsetY, isNext, viewCenter) {
         const screenX = this.worldX - offsetX + viewCenter[0];
         const screenY = this.worldY - offsetY + viewCenter[1];
 
-        ctx.fillStyle = isNext ? NEXT_BUOY_INDICATOR_COLOR : this.color;
+        let color = this.color;
+        if (isNext) {
+            color = 'green';
+        } else if (this.isPassed) {
+            color = 'red';
+        }
+
+        ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(screenX, screenY, this.radius, 0, 2 * Math.PI);
         ctx.fill();
@@ -485,6 +525,7 @@ let aiBoats = [];
 let sandbars = [];
 let buoys = [];
 let waves = [];
+let windParticles = [];
 let windSpeed = 10.0;
 let windDirection = 45.0;
 let lastTime = 0;
@@ -508,25 +549,26 @@ function setup() {
         aiBoats.push(aiBoat);
     }
 
-    for (let i = 0; i < 5; i++) {
-        sandbars.push(new Sandbar(Math.random() * 1000 - 500, Math.random() * 1000 - 500, 100));
+    for (let i = 0; i < 10; i++) {
+        sandbars.push(new Sandbar(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 150));
     }
 
     const numBuoys = 4;
     for (let i = 0; i < numBuoys; i++) {
         const angle = (i / numBuoys) * 2 * Math.PI;
-        const distance = Math.random() * 200 + 300; // 300 to 500 units away
+        const distance = Math.random() * 400 + 600; // 600 to 1000 units away
         const x = Math.cos(angle) * distance;
         const y = Math.sin(angle) * distance;
         const buoy = new Buoy(x, y, i);
-        if (i === 0) {
-            buoy.color = 'green';
-        }
         buoys.push(buoy);
     }
 
     for (let i = 0; i < 20; i++) {
         waves.push(new Wave(windDirection, windSpeed));
+    }
+
+    for (let i = 0; i < 50; i++) {
+        windParticles.push(new WindParticle(windDirection, windSpeed));
     }
 
     // Event Listeners
@@ -583,6 +625,7 @@ function update(dt) {
         aiBoat.update(windSpeed, windDirection, dt);
     });
     waves.forEach(w => w.update());
+    windParticles.forEach(p => p.update());
 
     // Buoy collision
     [player1Boat, ...aiBoats].forEach(boat => {
@@ -591,10 +634,12 @@ function update(dt) {
             const nextBuoy = buoys[boat.nextBuoyIndex];
             const distSq = distance_sq([boat.worldX, boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
             if (distSq < BUOY_ROUNDING_RADIUS * BUOY_ROUNDING_RADIUS) {
+                nextBuoy.isPassed = true;
                 boat.nextBuoyIndex++;
                 if (boat.nextBuoyIndex === buoys.length) {
                     boat.currentLap++;
                     boat.nextBuoyIndex = 0;
+                    buoys.forEach(b => b.isPassed = false);
                 }
             }
         }
@@ -643,6 +688,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     waves.forEach(w => w.draw(waveCtx));
+    windParticles.forEach(p => p.draw(waveCtx));
 }
 
 function drawMiniMap() {
@@ -688,7 +734,15 @@ function drawMiniMap() {
     buoys.forEach((b, i) => {
         const buoyX = b.worldX * worldScale + mapSize / 2;
         const buoyY = b.worldY * worldScale + mapSize / 2;
-        miniMapCtx.fillStyle = i === player1Boat.nextBuoyIndex ? 'green' : b.color;
+
+        let color = b.color;
+        if (i === player1Boat.nextBuoyIndex) {
+            color = 'green';
+        } else if (b.isPassed) {
+            color = 'red';
+        }
+
+        miniMapCtx.fillStyle = color;
         miniMapCtx.beginPath();
         miniMapCtx.arc(buoyX, buoyY, 3, 0, 2 * Math.PI);
         miniMapCtx.fill();
