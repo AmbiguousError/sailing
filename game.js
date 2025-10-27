@@ -63,11 +63,12 @@ function distance_sq(p1, p2) {
 
 
 class Wave {
-    constructor(windDirection) {
+    constructor(windDirection, windSpeed) {
         this.windDirection = windDirection;
+        this.windSpeed = windSpeed;
         this.y = Math.random() * window.innerHeight;
         this.x = Math.random() * window.innerWidth;
-        this.speed = Math.random() * 0.5 + 0.5;
+        this.speed = (Math.random() * 0.5 + 0.5) * (this.windSpeed / 5.0);
         this.amplitude = Math.random() * 10 + 5;
         this.frequency = Math.random() * 0.02 + 0.01;
         this.width = Math.random() * 2 + 1;
@@ -431,7 +432,7 @@ class Sandbar {
         ]);
 
         if (screenPoints.length > 2) {
-            ctx.fillStyle = SAND_COLOR;
+            ctx.fillStyle = 'rgba(210, 180, 140, 0.5)'; // Semi-transparent tan
             ctx.beginPath();
             ctx.moveTo(screenPoints[0][0], screenPoints[0][1]);
             for (let i = 1; i < screenPoints.length; i++) {
@@ -473,17 +474,18 @@ const ctx = canvas.getContext('2d');
 const waveCanvas = document.getElementById('waveCanvas');
 const waveCtx = waveCanvas.getContext('2d');
 const windArrow = document.getElementById('wind-arrow');
+const optimalSailAngleElement = document.getElementById('optimal-sail-angle');
 const speedReading = document.getElementById('speed-reading');
 const lapsElement = document.getElementById('laps');
 const miniMap = document.getElementById('mini-map');
 const miniMapCtx = miniMap.getContext('2d');
 
 let player1Boat;
-let aiBoat;
+let aiBoats = [];
 let sandbars = [];
 let buoys = [];
 let waves = [];
-let windSpeed = 5.0;
+let windSpeed = 10.0;
 let windDirection = 45.0;
 let lastTime = 0;
 const keys = {};
@@ -498,23 +500,25 @@ function setup() {
     player1Boat.worldX = 0;
     player1Boat.worldY = 0;
 
-    aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, "AI", "#FFB6C1");
-    aiBoat.worldX = -50;
-    aiBoat.worldY = -50;
+    const numOpponents = 3;
+    for (let i = 0; i < numOpponents; i++) {
+        const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, `hsl(${Math.random() * 360}, 100%, 75%)`);
+        aiBoat.worldX = -50 * (i + 1);
+        aiBoat.worldY = -50 * (i + 1);
+        aiBoats.push(aiBoat);
+    }
 
     for (let i = 0; i < 5; i++) {
         sandbars.push(new Sandbar(Math.random() * 1000 - 500, Math.random() * 1000 - 500, 100));
     }
 
-    const buoyPositions = [
-        [-400, -400],
-        [400, -400],
-        [400, 400],
-        [-400, 400]
-    ];
-
-    for (let i = 0; i < buoyPositions.length; i++) {
-        const buoy = new Buoy(buoyPositions[i][0], buoyPositions[i][1], i);
+    const numBuoys = 4;
+    for (let i = 0; i < numBuoys; i++) {
+        const angle = (i / numBuoys) * 2 * Math.PI;
+        const distance = Math.random() * 200 + 300; // 300 to 500 units away
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+        const buoy = new Buoy(x, y, i);
         if (i === 0) {
             buoy.color = 'green';
         }
@@ -522,7 +526,7 @@ function setup() {
     }
 
     for (let i = 0; i < 20; i++) {
-        waves.push(new Wave(windDirection));
+        waves.push(new Wave(windDirection, windSpeed));
     }
 
     // Event Listeners
@@ -574,14 +578,14 @@ function gameLoop(timestamp) {
 
 function update(dt) {
     player1Boat.update(windSpeed, windDirection, dt);
-    if (aiBoat) {
+    aiBoats.forEach(aiBoat => {
         aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection);
         aiBoat.update(windSpeed, windDirection, dt);
-    }
+    });
     waves.forEach(w => w.update());
 
     // Buoy collision
-    [player1Boat, aiBoat].forEach(boat => {
+    [player1Boat, ...aiBoats].forEach(boat => {
         if (!boat) return;
         if (boat.nextBuoyIndex < buoys.length) {
             const nextBuoy = buoys[boat.nextBuoyIndex];
@@ -600,15 +604,13 @@ function update(dt) {
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    renderWaves();
-
     const worldOffsetX = player1Boat.worldX;
     const worldOffsetY = player1Boat.worldY;
     const viewCenter = [canvas.width / 2, canvas.height / 2];
 
-    player1Boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
+    renderWaves(worldOffsetX, worldOffsetY, viewCenter);
 
-    sandbars.forEach(s => s.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
+    player1Boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
     buoys.forEach((b, i) => {
         const isNext = i === player1Boat.nextBuoyIndex;
@@ -619,23 +621,27 @@ function render() {
     player1Boat.screenY = viewCenter[1];
     player1Boat.draw(ctx);
 
-    if (aiBoat) {
+    aiBoats.forEach(aiBoat => {
         aiBoat.screenX = aiBoat.worldX - worldOffsetX + viewCenter[0];
         aiBoat.screenY = aiBoat.worldY - worldOffsetY + viewCenter[1];
         aiBoat.draw(ctx);
-    }
+    });
 
     // Update HUD
     windArrow.style.transform = `rotate(${windDirection}deg)`;
+    optimalSailAngleElement.style.transform = `rotate(${player1Boat.optimalSailTrim + player1Boat.heading}deg)`;
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
     lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
 
     drawMiniMap();
 }
 
-function renderWaves() {
+function renderWaves(offsetX, offsetY, viewCenter) {
     waveCtx.fillStyle = WATER_COLOR;
     waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+
+    sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
+
     waves.forEach(w => w.draw(waveCtx));
 }
 
@@ -649,19 +655,35 @@ function drawMiniMap() {
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
     const playerY = player1Boat.worldY * worldScale + mapSize / 2;
 
+    const playerRad = deg_to_rad(player1Boat.heading);
+    miniMapCtx.save();
+    miniMapCtx.translate(playerX, playerY);
+    miniMapCtx.rotate(playerRad);
     miniMapCtx.fillStyle = player1Boat.color;
     miniMapCtx.beginPath();
-    miniMapCtx.arc(playerX, playerY, 5, 0, 2 * Math.PI);
+    miniMapCtx.moveTo(5, 0);
+    miniMapCtx.lineTo(-5, -4);
+    miniMapCtx.lineTo(-5, 4);
+    miniMapCtx.closePath();
     miniMapCtx.fill();
+    miniMapCtx.restore();
 
-    if (aiBoat) {
+    aiBoats.forEach(aiBoat => {
         const aiX = aiBoat.worldX * worldScale + mapSize / 2;
         const aiY = aiBoat.worldY * worldScale + mapSize / 2;
+        const aiRad = deg_to_rad(aiBoat.heading);
+        miniMapCtx.save();
+        miniMapCtx.translate(aiX, aiY);
+        miniMapCtx.rotate(aiRad);
         miniMapCtx.fillStyle = aiBoat.color;
         miniMapCtx.beginPath();
-        miniMapCtx.arc(aiX, aiY, 5, 0, 2 * Math.PI);
+        miniMapCtx.moveTo(5, 0);
+        miniMapCtx.lineTo(-5, -4);
+        miniMapCtx.lineTo(-5, 4);
+        miniMapCtx.closePath();
         miniMapCtx.fill();
-    }
+        miniMapCtx.restore();
+    });
 
     buoys.forEach((b, i) => {
         const buoyX = b.worldX * worldScale + mapSize / 2;
