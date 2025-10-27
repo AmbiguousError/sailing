@@ -14,7 +14,7 @@ const WAKE_LIFETIME = 2.0;
 const MAX_WAKE_PARTICLES = 100;
 const WAKE_SPAWN_INTERVAL = 0.1;
 const BOAT_DRAG = 0.95;
-const MIN_TURN_EFFECTIVENESS = 0.2;
+const MIN_TURN_EFFECTIVENESS = 0.8;
 const SANDBAR_DRAG_MULTIPLIER = 0.8;
 const NO_POWER_DECEL = 0.1;
 const BUOY_ROUNDING_RADIUS = 50;
@@ -681,12 +681,32 @@ function render() {
     drawMiniMap();
 }
 
+function drawWindIndicator(ctx) {
+    const centerX = ctx.canvas.width / 2;
+    const centerY = ctx.canvas.height / 2;
+    const length = 100;
+    const angle = deg_to_rad(windDirection);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(0, -length);
+    ctx.lineTo(20, -length + 40);
+    ctx.lineTo(-20, -length + 40);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
 function renderWaves(offsetX, offsetY, viewCenter) {
     waveCtx.fillStyle = WATER_COLOR;
     waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
 
     sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
+    drawWindIndicator(waveCtx);
     waves.forEach(w => w.draw(waveCtx));
     windParticles.forEach(p => p.draw(waveCtx));
 }
