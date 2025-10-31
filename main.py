@@ -11,6 +11,8 @@ from entities import Boat, Buoy, AIBoat, SailingStyle
 from course import generate_random_buoys, generate_random_sandbars
 from graphics import draw_map, draw_button, draw_wind_gauge
 from terrain import generate_depth_map
+from utils import normalize_angle
+from entities import AIBoat
 
 class GameState(Enum):
     SETUP = auto()
@@ -241,6 +243,15 @@ def main():
             boat.finish_time = 0
             boat.current_lap = 1
             boat.next_buoy_index = 0
+
+            # --- AI Initialization Fix ---
+            if isinstance(boat, AIBoat):
+                # Give AI a better starting heading relative to the wind (beam reach)
+                boat.heading = normalize_angle(wind_direction + 90)
+                # Let the sail out to catch wind immediately
+                boat.sail_angle_rel = MAX_SAIL_ANGLE_REL
+                # Give a tiny bit of speed to make rudder effective
+                boat.speed = 0.1
     
     running = True
     while running:
@@ -270,7 +281,7 @@ def main():
                     if p1_button_rect.collidepoint(event.pos): num_players = 1
                     elif p2_button_rect.collidepoint(event.pos): num_players = 2
                     elif laps_minus_rect.collidepoint(event.pos): selected_laps = max(1, selected_laps - 1)
-                    elif laps_plus_rect.collidepoint(event.pos): selected_laps = min(10, selected_laps + 1)
+                    elif laps_plus_rect.collidepoint(event.pos): selected_laps = min(3, selected_laps + 1)
                     elif races_minus_rect.collidepoint(event.pos): selected_races = max(1, selected_races - 1)
                     elif races_plus_rect.collidepoint(event.pos): selected_races = min(10, selected_races + 1)
                     elif start_button_rect.collidepoint(event.pos):
