@@ -254,7 +254,7 @@ class Boat {
         this.windEffectiveness = 0.0;
         this.optimalSailTrim = 0.0;
 
-        if (absWindAngleRelBoat > MIN_SAILING_ANGLE) {
+        if (absWindAngleRelBoat >= MIN_SAILING_ANGLE) {
             const optimalTrim = angle_difference(windAngleRelBoat + 180, 90);
             this.optimalSailTrim = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, optimalTrim));
             const trimDiff = angle_difference(this.sailAngleRel, this.optimalSailTrim);
