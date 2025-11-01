@@ -69,38 +69,41 @@ function handle_boat_collision(boat1, boat2) {
     if (dist_sq < min_dist * min_dist && dist_sq > 0) {
         const dist = Math.sqrt(dist_sq);
         const overlap = min_dist - dist;
+
         const nx = (boat2.worldX - boat1.worldX) / dist;
         const ny = (boat2.worldY - boat1.worldY) / dist;
 
-        // Resolve Overlap by pushing boats apart
+        // Separate the boats
         boat1.worldX -= nx * overlap * 0.5;
         boat1.worldY -= ny * overlap * 0.5;
         boat2.worldX += nx * overlap * 0.5;
         boat2.worldY += ny * overlap * 0.5;
 
-        // Simplified impulse calculation for a "bump" effect
-        // Get velocity components along the normal
-        const v1_dot = Math.cos(deg_to_rad(boat1.heading)) * boat1.speed * nx + Math.sin(deg_to_rad(boat1.heading)) * boat1.speed * ny;
-        const v2_dot = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed * nx + Math.sin(deg_to_rad(boat2.heading)) * boat2.speed * ny;
+        // Calculate relative velocity
+        const rel_vx = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed - Math.cos(deg_to_rad(boat1.heading)) * boat1.speed;
+        const rel_vy = Math.sin(deg_to_rad(boat2.heading)) * boat2.speed - Math.sin(deg_to_rad(boat1.heading)) * boat1.speed;
 
-        // Don't do anything if they are already moving apart
-        if (v1_dot > v2_dot) return;
+        // Calculate velocity along the normal
+        const vel_along_normal = rel_vx * nx + rel_vy * ny;
 
-        // Apply a simple speed reduction and a small push-back
-        const restitution = 0.6; // Bounciness
-        const avg_speed = (boat1.speed + boat2.speed) / 2;
+        // Do not resolve if velocities are separating
+        if (vel_along_normal > 0) return;
 
-        // Reduce speed based on collision angle
-        boat1.speed *= 0.95;
-        boat2.speed *= 0.95;
+        const restitution = 0.5; // Bounciness
+        let impulse = -(1 + restitution) * vel_along_normal;
 
-        // Apply a small impulse to push them apart, affecting speed more than heading
-        const impulse = (v2_dot - v1_dot) * restitution;
-        boat1.speed += impulse * 0.5;
-        boat2.speed -= impulse * 0.5;
+        // Simple mass assumption (equal mass for all boats)
+        impulse /= 2;
 
-        boat1.speed = Math.max(0, boat1.speed);
-        boat2.speed = Math.max(0, boat2.speed);
+        const impulse_x = impulse * nx;
+        const impulse_y = impulse * ny;
+
+        // Apply impulse to boat speeds
+        const new_speed1 = Math.sqrt(Math.pow(Math.cos(deg_to_rad(boat1.heading)) * boat1.speed + impulse_x, 2) + Math.pow(Math.sin(deg_to_rad(boat1.heading)) * boat1.speed + impulse_y, 2));
+        const new_speed2 = Math.sqrt(Math.pow(Math.cos(deg_to_rad(boat2.heading)) * boat2.speed - impulse_x, 2) + Math.pow(Math.sin(deg_to_rad(boat2.heading)) * boat2.speed - impulse_y, 2));
+
+        boat1.speed = Math.max(0, new_speed1 * 0.9); // Lose some energy
+        boat2.speed = Math.max(0, new_speed2 * 0.9);
     }
 }
 
@@ -172,36 +175,40 @@ class WindParticle {
 }
 
 class Wave {
-    constructor(y, speed, length, amplitude, color) {
-        this.y = y;
+    constructor(config) {
         this.x = Math.random() * SCREEN_WIDTH;
-        this.speed = speed;
-        this.length = length;
-        this.amplitude = amplitude;
-        this.color = color;
-        this.time = Math.random() * 100;
+        this.y = Math.random() * SCREEN_HEIGHT;
+        this.radius = Math.random() * 5 + 2;
+        this.speed = config.speed * (0.5 + Math.random() * 0.5);
+        this.angle = Math.random() * 2 * Math.PI;
+        this.color = config.color;
+        this.lineWidth = config.lineWidth;
+        this.time = 0;
+        this.lifetime = Math.random() * 2 + 3; // Live for 3-5 seconds
     }
 
     update(dt) {
-        this.x += this.speed * dt;
+        this.x += Math.cos(this.angle) * this.speed * dt;
+        this.y += Math.sin(this.angle) * this.speed * dt;
         this.time += dt;
-        if (this.x > SCREEN_WIDTH + this.length) {
-            this.x = -this.length;
+
+        // Reset if it goes off-screen or its lifetime ends
+        if (this.x < 0 || this.x > SCREEN_WIDTH || this.y < 0 || this.y > SCREEN_HEIGHT || this.time > this.lifetime) {
+            this.x = Math.random() * SCREEN_WIDTH;
+            this.y = Math.random() * SCREEN_HEIGHT;
+            this.time = 0;
+            this.lifetime = Math.random() * 2 + 3;
         }
     }
 
     draw(ctx) {
-        const segmentLength = 5;
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y);
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 2;
+        const lifeRatio = this.time / this.lifetime;
+        const alpha = Math.sin(lifeRatio * Math.PI); // Fade in and out
 
-        for (let i = 0; i < this.length; i += segmentLength) {
-            const currentX = this.x + i;
-            const currentY = this.y + Math.sin(this.time + i / (this.length / 4)) * this.amplitude;
-            ctx.lineTo(currentX, currentY);
-        }
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
+        ctx.strokeStyle = `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${alpha * 0.5})`;
+        ctx.lineWidth = this.lineWidth;
         ctx.stroke();
     }
 }
@@ -854,8 +861,8 @@ function setup() {
     for (let i = 0; i < numOpponents; i++) {
         const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, `hsl(${Math.random() * 360}, 100%, 75%)`);
         // Spread them out even more at the start to prevent immediate collisions
-        aiBoat.worldX = -80 * (i + 1);
-        aiBoat.worldY = 80 * (i % 2 === 0 ? 1 : -1) * (Math.random() * 0.5 + 0.5);
+        aiBoat.worldX = -120 * (i + 1);
+        aiBoat.worldY = 100 * (i % 2 === 0 ? 1 : -1) * (Math.random() * 0.5 + 0.8);
         aiBoats.push(aiBoat);
     }
 
@@ -864,16 +871,25 @@ function setup() {
         islands.push(new Island(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, Math.random() * 100 + 150));
     }
 
-    islands.forEach(island => {
-        const num_sandbars = Math.floor(Math.random() * 3) + 2; // 2-4 sandbars per island
-        for (let i = 0; i < num_sandbars; i++) {
-            const angle = Math.random() * 2 * Math.PI;
-            const distance = island.size / 2 + Math.random() * 100 + 50; // 50-150 units away
-            const x = island.worldX + Math.cos(angle) * distance;
-            const y = island.worldY + Math.sin(angle) * distance;
-            sandbars.push(new Sandbar(x, y, Math.random() * 50 + 50)); // 50-100 size
+    // Connect nearby islands with sandbars to form atolls
+    for (let i = 0; i < islands.length; i++) {
+        for (let j = i + 1; j < islands.length; j++) {
+            const island1 = islands[i];
+            const island2 = islands[j];
+            const dist_sq = distance_sq([island1.worldX, island1.worldY], [island2.worldX, island2.worldY]);
+            const max_dist_for_atoll = 800;
+
+            if (dist_sq < max_dist_for_atoll * max_dist_for_atoll) {
+                const num_segments = Math.floor(Math.sqrt(dist_sq) / 80);
+                for (let k = 1; k < num_segments; k++) {
+                    const t = k / num_segments;
+                    const x = island1.worldX + (island2.worldX - island1.worldX) * t + (Math.random() - 0.5) * 100;
+                    const y = island1.worldY + (island2.worldY - island1.worldY) * t + (Math.random() - 0.5) * 100;
+                    sandbars.push(new Sandbar(x, y, Math.random() * 60 + 40));
+                }
+            }
         }
-    });
+    }
 
     const numBuoys = 8;
     const center_x = 0;
@@ -892,12 +908,26 @@ function setup() {
             y = center_y + Math.sin(angle) * distance;
 
             valid_position = true;
+            // Check against other buoys
             for (const buoy of buoys) {
                 if (distance_sq([x, y], [buoy.worldX, buoy.worldY]) < min_sep * min_sep) {
                     valid_position = false;
                     break;
                 }
             }
+
+            // Check against islands if the position is still valid
+            if (valid_position) {
+                for (const island of islands) {
+                    const padding = 120; // Extra safe distance from island edge
+                    const min_dist_from_island_sq = (island.collisionRadius + padding) * (island.collisionRadius + padding);
+                    if (distance_sq([x, y], [island.worldX, island.worldY]) < min_dist_from_island_sq) {
+                        valid_position = false;
+                        break;
+                    }
+                }
+            }
+
             attempts++;
         } while (!valid_position && attempts < 50);
 
@@ -908,14 +938,16 @@ function setup() {
         buoys.push(new Buoy(x, y, i));
     }
 
-    for (let i = 0; i < 15; i++) {
-        const y = (i / 15) * SCREEN_HEIGHT;
-        const speed = Math.random() * 20 + 10;
-        const length = Math.random() * 100 + 50;
-        const amplitude = Math.random() * 5 + 2;
-        waves.push(new Wave(y, speed, length, amplitude, 'rgba(255, 255, 255, 0.2)'));
-        waves.push(new Wave(y, speed * 0.8, length * 1.2, amplitude * 0.7, 'rgba(255, 255, 255, 0.1)'));
-    }
+    const waveConfigs = [
+        { count: 30, speed: 20, color: [255, 255, 255], lineWidth: 2 },
+        { count: 25, speed: 30, color: [255, 255, 255], lineWidth: 1.5 },
+        { count: 20, speed: 40, color: [220, 240, 255], lineWidth: 1 }
+    ];
+    waveConfigs.forEach(config => {
+        for (let i = 0; i < config.count; i++) {
+            waves.push(new Wave(config));
+        }
+    });
 
     for (let i = 0; i < 50; i++) {
         windParticles.push(new WindParticle(windDirection, windSpeed));
@@ -1038,7 +1070,9 @@ function render() {
 
     islands.forEach(i => i.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
-    player1Boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
+    [player1Boat, ...aiBoats].forEach(boat => {
+        boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
+    });
 
     buoys.forEach((b, i) => {
         const isNext = i === player1Boat.nextBuoyIndex;
@@ -1104,11 +1138,13 @@ function drawMiniMap() {
     let minY = player1Boat.worldY;
     let maxY = player1Boat.worldY;
 
-    buoys.forEach(b => {
-        minX = Math.min(minX, b.worldX);
-        maxX = Math.max(maxX, b.worldX);
-        minY = Math.min(minY, b.worldY);
-        maxY = Math.max(maxY, b.worldY);
+    const allObjects = [...buoys, ...islands, player1Boat];
+    allObjects.forEach(obj => {
+        const radius = obj.collisionRadius || 0;
+        minX = Math.min(minX, obj.worldX - radius);
+        maxX = Math.max(maxX, obj.worldX + radius);
+        minY = Math.min(minY, obj.worldY - radius);
+        maxY = Math.max(maxY, obj.worldY + radius);
     });
 
     const worldWidth = maxX - minX;
