@@ -511,43 +511,89 @@ class AIBoat extends Boat {
     updateControls(target_buoy, wind_direction, islands, dt) {
         if (!target_buoy) return;
 
-        // --- Obstacle Avoidance Logic ---
-        if (this.avoidanceManeuver) {
+        // --- Obstacle Avoidance ---
+        if (this.avoidanceManeuver && this.avoidanceManeuver.timeLeft > 0) {
             this.avoidanceManeuver.timeLeft -= dt;
-            if (this.avoidanceManeuver.timeLeft > 0) {
-                this.turn(this.avoidanceManeuver.turnDirection);
-                this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
-                return; // Continue maneuver
-            } else {
-                this.avoidanceManeuver = null; // Maneuver complete
+            this.turn(this.avoidanceManeuver.turnDirection);
+            this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
+            // If we are still on a collision course, extend the maneuver
+            if (is_on_collision_course(this, this.avoidanceManeuver.obstacle, 3)) {
+                this.avoidanceManeuver.timeLeft = 1.0;
             }
+            return;
+        } else {
+            this.avoidanceManeuver = null;
         }
+
         for (const island of islands) {
-            const lookahead_time = 4 / (this.speed + 1) + 1; // Look further ahead at low speed
+            const lookahead_time = 5 / (this.speed + 1) + 1; // More cautious lookahead
             if (is_on_collision_course(this, island, lookahead_time)) {
-                const angle_to_island = normalize_angle(rad_to_deg(Math.atan2(island.worldY - this.worldY, island.worldX - this.worldX)));
-                const angle_diff = angle_difference(angle_to_island, this.heading);
-                const turnDirection = angle_diff > 0 ? -1 : 1; // Turn away
+                const angle_to_obstacle = normalize_angle(rad_to_deg(Math.atan2(island.worldY - this.worldY, island.worldX - this.worldX)));
+                const angle_diff = angle_difference(angle_to_obstacle, this.heading);
+                const turnDirection = angle_diff > 0 ? -1 : 1;
                 this.avoidanceManeuver = {
-                    island: island,
+                    obstacle: island,
                     turnDirection: turnDirection,
-                    timeLeft: 2.5 // Commit to the turn for 2.5 seconds
+                    timeLeft: 1.5
                 };
-                this.turn(this.avoidanceManeuver.turnDirection);
-                this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
-                return; // Start maneuver immediately
+                this.turn(turnDirection);
+                return;
             }
         }
 
-        // --- Standard Navigation Logic ---
+        // --- Tacking and Navigation Logic ---
         const headingToTarget = normalize_angle(rad_to_deg(Math.atan2(target_buoy.worldY - this.worldY, target_buoy.worldX - this.worldX)));
-        const isUpwind = Math.abs(angle_difference(headingToTarget, wind_direction)) < MIN_SAILING_ANGLE;
+        const windAngleToTarget = Math.abs(angle_difference(headingToTarget, wind_direction));
+
+        const portTackHeading = normalize_angle(wind_direction + MIN_SAILING_ANGLE * (0.8 + this.tackingSkill * 0.2));
+        const starboardTackHeading = normalize_angle(wind_direction - MIN_SAILING_ANGLE * (0.8 + this.tackingSkill * 0.2));
 
         let desiredHeading;
 
-        if (!isUpwind) {
-            // The buoy is not upwind, so we can sail directly towards it.
+        if (windAngleToTarget < MIN_SAILING_ANGLE) { // Target is upwind
+            const onPortTack = angle_difference(this.heading, wind_direction) > 0;
+            const currentTackLayline = onPortTack ? portTackHeading : starboardTackHeading;
+            const angleToTargetFromLayline = angle_difference(headingToTarget, currentTackLayline);
+
+            const tackThreshold = 15 * (1 + (1 - this.aggressiveness));
+
+            let shouldTack = false;
+            if (onPortTack && angleToTargetFromLayline < -tackThreshold) {
+                shouldTack = true; // Target is too far to starboard, tack to starboard
+            } else if (!onPortTack && angleToTargetFromLayline > tackThreshold) {
+                shouldTack = true; // Target is too far to port, tack to port
+            }
+
+            // Cooldown to prevent rapid tacking
+            if (this.tackDecisionTime > 0) {
+                this.tackDecisionTime -= dt;
+                shouldTack = false;
+            }
+
+            if (shouldTack) {
+                desiredHeading = onPortTack ? starboardTackHeading : portTackHeading;
+                this.tackDecisionTime = 5.0; // 5 second cooldown
+            } else {
+                // If not tacking, maintain current tack or get on one if in irons
+                const currentAngleFromWind = Math.abs(angle_difference(this.heading, wind_direction));
+                if (currentAngleFromWind < MIN_SAILING_ANGLE - 10) { // In irons
+                    const portDiff = Math.abs(angle_difference(portTackHeading, headingToTarget));
+                    const starboardDiff = Math.abs(angle_difference(starboardTackHeading, headingToTarget));
+                    desiredHeading = (portDiff < starboardDiff) ? portTackHeading : starboardTackHeading;
+                } else {
+                    desiredHeading = currentTackLayline;
+                }
+            }
+        } else { // Target is downwind or reachable
             desiredHeading = headingToTarget;
+        }
+
+        const finalHeading = normalize_angle(desiredHeading + this.headingError);
+        const headingDiff = angle_difference(finalHeading, this.heading);
+
+        // Apply steering
+        if (Math.abs(headingDiff) > 2) {
+            this.turn(Math.sign(headingDiff));
         } else {
             // The buoy is upwind, so we need to tack.
 
@@ -581,15 +627,7 @@ class AIBoat extends Boat {
             }
         }
 
-        const finalHeading = normalize_angle(desiredHeading + this.headingError);
-        const headingDiff = angle_difference(finalHeading, this.heading);
-
-        // Steer towards the desired heading.
-        if (headingDiff > 5) this.turn(1);
-        else if (headingDiff < -5) this.turn(-1);
-        else this.turn(0);
-
-        // Trim sails based on the actual current heading for optimal speed.
+        // Apply sail trim
         this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
     }
 
@@ -784,10 +822,11 @@ let windSpeed = 10.0;
 let windDirection = 45.0;
 let lastTime = 0;
 const keys = {};
-let gameState = 'start';
+let gameState = 'start'; // 'start', 'countdown', 'racing', 'race-over'
 
 function setup() {
     document.getElementById('start-screen').style.display = 'block';
+    document.getElementById('race-over-screen').style.display = 'none';
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     waveCanvas.width = window.innerWidth;
@@ -815,30 +854,53 @@ function setup() {
         aiBoats.push(aiBoat);
     }
 
-    const numIslands = 5;
-    for (let i = 0; i < numIslands; i++) {
-        islands.push(new Island(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, Math.random() * 100 + 150));
-    }
+    // const numIslands = 5;
+    // for (let i = 0; i < numIslands; i++) {
+    //     islands.push(new Island(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, Math.random() * 100 + 150));
+    // }
 
-    islands.forEach(island => {
-        const num_sandbars = Math.floor(Math.random() * 3) + 2; // 2-4 sandbars per island
-        for (let i = 0; i < num_sandbars; i++) {
-            const angle = Math.random() * 2 * Math.PI;
-            const distance = island.size / 2 + Math.random() * 100 + 50; // 50-150 units away
-            const x = island.worldX + Math.cos(angle) * distance;
-            const y = island.worldY + Math.sin(angle) * distance;
-            sandbars.push(new Sandbar(x, y, Math.random() * 50 + 50)); // 50-100 size
-        }
-    });
+    // islands.forEach(island => {
+    //     const num_sandbars = Math.floor(Math.random() * 3) + 2; // 2-4 sandbars per island
+    //     for (let i = 0; i < num_sandbars; i++) {
+    //         const angle = Math.random() * 2 * Math.PI;
+    //         const distance = island.size / 2 + Math.random() * 100 + 50; // 50-150 units away
+    //         const x = island.worldX + Math.cos(angle) * distance;
+    //         const y = island.worldY + Math.sin(angle) * distance;
+    //         sandbars.push(new Sandbar(x, y, Math.random() * 50 + 50)); // 50-100 size
+    //     }
+    // });
 
-    const numBuoys = 8; // Increased from 5
+    const numBuoys = 8;
+    const center_x = 0;
+    const center_y = 0;
+    const min_dist = 600;
+    const max_dist = 1400;
+    const min_sep = 300;
+
     for (let i = 0; i < numBuoys; i++) {
-        const angle = Math.random() * 2 * Math.PI;
-        const distance = Math.random() * 800 + 600; // 600 to 1400 units away
-        const x = Math.cos(angle) * distance;
-        const y = Math.sin(angle) * distance;
-        const buoy = new Buoy(x, y, i);
-        buoys.push(buoy);
+        let x, y, valid_position;
+        let attempts = 0;
+        do {
+            const angle = Math.random() * 2 * Math.PI;
+            const distance = min_dist + Math.random() * (max_dist - min_dist);
+            x = center_x + Math.cos(angle) * distance;
+            y = center_y + Math.sin(angle) * distance;
+
+            valid_position = true;
+            for (const buoy of buoys) {
+                if (distance_sq([x, y], [buoy.worldX, buoy.worldY]) < min_sep * min_sep) {
+                    valid_position = false;
+                    break;
+                }
+            }
+            attempts++;
+        } while (!valid_position && attempts < 50);
+
+        if (attempts >= 50) {
+            console.warn("Could not place a buoy with enough separation.");
+        }
+
+        buoys.push(new Buoy(x, y, i));
     }
 
     for (let i = 0; i < 15; i++) {
@@ -902,11 +964,11 @@ function update(dt) {
     }
 
     // Island collision
-    allBoats.forEach(boat => {
-        islands.forEach(island => {
-            handle_boat_island_collision(boat, island);
-        });
-    });
+    // allBoats.forEach(boat => {
+    //     islands.forEach(island => {
+    //         handle_boat_island_collision(boat, island);
+    //     });
+    // });
 
     // Buoy collision
     allBoats.forEach(boat => {
@@ -969,7 +1031,7 @@ function render() {
 
     renderWaves(worldOffsetX, worldOffsetY, viewCenter);
 
-    islands.forEach(i => i.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
+    // islands.forEach(i => i.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
     player1Boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
@@ -1021,7 +1083,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     waveCtx.fillStyle = WATER_COLOR;
     waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
 
-    sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
+    // sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
     waves.forEach(w => w.draw(waveCtx, waveCanvas.width, waveCanvas.height, offsetX, offsetY));
@@ -1032,9 +1094,13 @@ function drawMiniMap() {
     const mapSize = 200;
     const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    // Clear the map with a completely transparent background
-    miniMapCtx.clearRect(0, 0, mapSize, mapSize);
+    miniMapCtx.fillStyle = 'rgba(173, 216, 230, 0.6)'; // Light blue with 60% opacity
+    miniMapCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    miniMapCtx.lineWidth = 2;
 
+    miniMapCtx.clearRect(0, 0, mapSize, mapSize);
+    miniMapCtx.fillRect(0, 0, mapSize, mapSize);
+    miniMapCtx.strokeRect(0, 0, mapSize, mapSize);
 
 
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
