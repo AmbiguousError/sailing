@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="start-screen">
+        <h1>Dinghy Sailing Race</h1>
+        <button id="start-button">Start Race</button>
+    </div>
+    <div id="countdown"></div>
     <canvas id="waveCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
     <div id="hud">
@@ -22,6 +27,11 @@
         <div id="laps">Lap: 1</div>
     </div>
     <canvas id="mini-map"></canvas>
+    <div id="race-over-screen">
+        <h2>Race Over!</h2>
+        <ul id="results-list"></ul>
+        <button id="restart-button">Restart</button>
+    </div>
     <div id="touch-controls">
         <div class="control-area left">
             <button id="turn-left">⟲</button>
