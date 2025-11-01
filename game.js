@@ -72,49 +72,35 @@ function handle_boat_collision(boat1, boat2) {
         const nx = (boat2.worldX - boat1.worldX) / dist;
         const ny = (boat2.worldY - boat1.worldY) / dist;
 
-        // Resolve Overlap
+        // Resolve Overlap by pushing boats apart
         boat1.worldX -= nx * overlap * 0.5;
         boat1.worldY -= ny * overlap * 0.5;
         boat2.worldX += nx * overlap * 0.5;
         boat2.worldY += ny * overlap * 0.5;
 
-        // Decompose speeds into vectors
-        const boat1_vx = Math.cos(deg_to_rad(boat1.heading)) * boat1.speed;
-        const boat1_vy = Math.sin(deg_to_rad(boat1.heading)) * boat1.speed;
-        const boat2_vx = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed;
-        const boat2_vy = Math.sin(deg_to_rad(boat2.heading)) * boat2.speed;
+        // Simplified impulse calculation for a "bump" effect
+        // Get velocity components along the normal
+        const v1_dot = Math.cos(deg_to_rad(boat1.heading)) * boat1.speed * nx + Math.sin(deg_to_rad(boat1.heading)) * boat1.speed * ny;
+        const v2_dot = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed * nx + Math.sin(deg_to_rad(boat2.heading)) * boat2.speed * ny;
 
-        // Relative velocity
-        const rvx = boat2_vx - boat1_vx;
-        const rvy = boat2_vy - boat1_vy;
-        const velAlongNormal = rvx * nx + rvy * ny;
-        if (velAlongNormal > 0) return;
+        // Don't do anything if they are already moving apart
+        if (v1_dot > v2_dot) return;
 
-        // More pronounced "bump"
-        const restitution = 0.9;
-        const j = -(1 + restitution) * velAlongNormal;
+        // Apply a simple speed reduction and a small push-back
+        const restitution = 0.6; // Bounciness
+        const avg_speed = (boat1.speed + boat2.speed) / 2;
 
-        const impulseX = j * nx;
-        const impulseY = j * ny;
+        // Reduce speed based on collision angle
+        boat1.speed *= 0.95;
+        boat2.speed *= 0.95;
 
-        // Apply impulse without drastically changing heading
-        const new_boat1_vx = boat1_vx - impulseX * 0.5;
-        const new_boat1_vy = boat1_vy - impulseY * 0.5;
-        const new_boat2_vx = boat2_vx + impulseX * 0.5;
-        const new_boat2_vy = boat2_vy + impulseY * 0.5;
+        // Apply a small impulse to push them apart, affecting speed more than heading
+        const impulse = (v2_dot - v1_dot) * restitution;
+        boat1.speed += impulse * 0.5;
+        boat2.speed -= impulse * 0.5;
 
-        boat1.speed = Math.min(MAX_BOAT_SPEED, Math.sqrt(new_boat1_vx**2 + new_boat1_vy**2));
-        boat2.speed = Math.min(MAX_BOAT_SPEED, Math.sqrt(new_boat2_vx**2 + new_boat2_vy**2));
-
-        // Nudge heading slightly instead of forcing it, preserving momentum direction
-        if (boat1.speed > 0.2) {
-             const new_heading = rad_to_deg(Math.atan2(new_boat1_vy, new_boat1_vx));
-             boat1.heading = normalize_angle(boat1.heading + angle_difference(new_heading, boat1.heading) * 0.3);
-        }
-        if (boat2.speed > 0.2) {
-             const new_heading = rad_to_deg(Math.atan2(new_boat2_vy, new_boat2_vx));
-             boat2.heading = normalize_angle(boat2.heading + angle_difference(new_heading, boat2.heading) * 0.3);
-        }
+        boat1.speed = Math.max(0, boat1.speed);
+        boat2.speed = Math.max(0, boat2.speed);
     }
 }
 
@@ -186,35 +172,36 @@ class WindParticle {
 }
 
 class Wave {
-    constructor(amplitude, wavelength, speed, color, offset) {
-        this.amplitude = amplitude;
-        this.wavelength = wavelength;
+    constructor(y, speed, length, amplitude, color) {
+        this.y = y;
+        this.x = Math.random() * SCREEN_WIDTH;
         this.speed = speed;
+        this.length = length;
+        this.amplitude = amplitude;
         this.color = color;
         this.time = Math.random() * 100;
-        this.offset = offset;
     }
 
     update(dt) {
-        this.time += dt * this.speed;
+        this.x += this.speed * dt;
+        this.time += dt;
+        if (this.x > SCREEN_WIDTH + this.length) {
+            this.x = -this.length;
+        }
     }
 
-    draw(ctx, width, height, worldOffsetX, worldOffsetY) {
-        const parallaxFactor = 0.1;
-        const startY = height / 2 + this.offset;
-
+    draw(ctx) {
+        const segmentLength = 5;
         ctx.beginPath();
-        ctx.moveTo(0, startY + Math.sin(this.time) * this.amplitude);
-
-        for (let x = 0; x <= width; x += 10) {
-            const worldX = x + worldOffsetX * parallaxFactor;
-            const angle = (worldX / this.wavelength) * 2 * Math.PI + this.time;
-            const y = startY + Math.sin(angle) * this.amplitude;
-            ctx.lineTo(x, y);
-        }
-
+        ctx.moveTo(this.x, this.y);
         ctx.strokeStyle = this.color;
         ctx.lineWidth = 2;
+
+        for (let i = 0; i < this.length; i += segmentLength) {
+            const currentX = this.x + i;
+            const currentY = this.y + Math.sin(this.time + i / (this.length / 4)) * this.amplitude;
+            ctx.lineTo(currentX, currentY);
+        }
         ctx.stroke();
     }
 }
@@ -822,9 +809,9 @@ function setup() {
     const numOpponents = 3;
     for (let i = 0; i < numOpponents; i++) {
         const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, `hsl(${Math.random() * 360}, 100%, 75%)`);
-        // Spread them out more at the start
-        aiBoat.worldX = -60 * (i + 1);
-        aiBoat.worldY = 60 * (i % 2 === 0 ? 1 : -1);
+        // Spread them out even more at the start to prevent immediate collisions
+        aiBoat.worldX = -80 * (i + 1);
+        aiBoat.worldY = 80 * (i % 2 === 0 ? 1 : -1) * (Math.random() * 0.5 + 0.5);
         aiBoats.push(aiBoat);
     }
 
@@ -854,11 +841,14 @@ function setup() {
         buoys.push(buoy);
     }
 
-    waves = [
-        new Wave(20, 250, 1.0, 'rgba(255, 255, 255, 0.5)', 0),
-        new Wave(15, 200, -1.3, 'rgba(255, 255, 255, 0.4)', 20),
-        new Wave(10, 150, 1.6, 'rgba(255, 255, 255, 0.3)', -15)
-    ];
+    for (let i = 0; i < 15; i++) {
+        const y = (i / 15) * SCREEN_HEIGHT;
+        const speed = Math.random() * 20 + 10;
+        const length = Math.random() * 100 + 50;
+        const amplitude = Math.random() * 5 + 2;
+        waves.push(new Wave(y, speed, length, amplitude, 'rgba(255, 255, 255, 0.2)'));
+        waves.push(new Wave(y, speed * 0.8, length * 1.2, amplitude * 0.7, 'rgba(255, 255, 255, 0.1)'));
+    }
 
     for (let i = 0; i < 50; i++) {
         windParticles.push(new WindParticle(windDirection, windSpeed));
@@ -1042,9 +1032,9 @@ function drawMiniMap() {
     const mapSize = 200;
     const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    // Clear the map with a translucent background
-    miniMapCtx.fillStyle = 'rgba(173, 221, 222, 0.75)'; // Same as CSS, but can be adjusted
-    miniMapCtx.fillRect(0, 0, mapSize, mapSize);
+    // Clear the map with a completely transparent background
+    miniMapCtx.clearRect(0, 0, mapSize, mapSize);
+
 
 
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
@@ -1054,7 +1044,7 @@ function drawMiniMap() {
     miniMapCtx.save();
     miniMapCtx.translate(playerX, playerY);
     miniMapCtx.rotate(playerRad);
-    miniMapCtx.fillStyle = player1Boat.color;
+    miniMapCtx.fillStyle = 'white'; // High-contrast color for the player
     miniMapCtx.beginPath();
     miniMapCtx.moveTo(5, 0);
     miniMapCtx.lineTo(-5, -4);
