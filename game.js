@@ -62,6 +62,49 @@ function distance_sq(p1, p2) {
     return dx * dx + dy * dy;
 }
 
+function handle_boat_collision(boat1, boat2) {
+    const dist_sq = distance_sq([boat1.worldX, boat1.worldY], [boat2.worldX, boat2.worldY]);
+    const min_dist = boat1.collisionRadius + boat2.collisionRadius;
+    if (dist_sq < min_dist * min_dist && dist_sq > 0) {
+        const dist = Math.sqrt(dist_sq);
+        const overlap = min_dist - dist;
+
+        const dx = boat2.worldX - boat1.worldX;
+        const dy = boat2.worldY - boat1.worldY;
+
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        boat1.worldX -= nx * overlap * 0.5;
+        boat1.worldY -= ny * overlap * 0.5;
+        boat2.worldX += nx * overlap * 0.5;
+        boat2.worldY += ny * overlap * 0.5;
+
+        boat1.speed *= 0.95;
+        boat2.speed *= 0.95;
+    }
+}
+
+function handle_boat_island_collision(boat, island) {
+    const dist_sq = distance_sq([boat.worldX, boat.worldY], [island.worldX, island.worldY]);
+    const min_dist = boat.collisionRadius + island.collisionRadius;
+    if (dist_sq < min_dist * min_dist) {
+        const dist = Math.sqrt(dist_sq);
+        const overlap = min_dist - dist;
+
+        const dx = boat.worldX - island.worldX;
+        const dy = boat.worldY - island.worldY;
+
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        boat.worldX += nx * overlap;
+        boat.worldY += ny * overlap;
+
+        boat.speed *= 0.8;
+    }
+}
+
 
 class WindParticle {
     constructor(windDirection, windSpeed) {
@@ -441,6 +484,51 @@ class AIBoat extends Boat {
     }
 }
 
+class Island {
+    constructor(worldX, worldY, size) {
+        this.worldX = worldX;
+        this.worldY = worldY;
+        this.size = size;
+        this.pointsRel = this._generateRandomPoints(size);
+        this.pointsWorld = this.pointsRel.map(p => [p[0] + worldX, p[1] + worldY]);
+        this.collisionRadius = size / 2;
+    }
+
+    _generateRandomPoints(size) {
+        const points = [];
+        const numVertices = Math.floor(Math.random() * 5) + 8; // 8-12 vertices
+        const avgRadius = size / 2.0;
+        for (let i = 0; i < numVertices; i++) {
+            let angle = (i / numVertices) * 2 * Math.PI;
+            const radiusVariation = Math.random() * 0.3 + 0.85; // 0.85 to 1.15
+            const radius = avgRadius * radiusVariation;
+            angle += Math.random() * (Math.PI / numVertices) - (Math.PI / numVertices / 2);
+            const x = radius * Math.cos(angle);
+            const y = radius * Math.sin(angle);
+            points.push([x, y]);
+        }
+        return points;
+    }
+
+    draw(ctx, offsetX, offsetY, viewCenter) {
+        const screenPoints = this.pointsWorld.map(([worldX, worldY]) => [
+            worldX - offsetX + viewCenter[0],
+            worldY - offsetY + viewCenter[1]
+        ]);
+
+        if (screenPoints.length > 2) {
+            ctx.fillStyle = '#8B4513'; // SaddleBrown
+            ctx.beginPath();
+            ctx.moveTo(screenPoints[0][0], screenPoints[0][1]);
+            for (let i = 1; i < screenPoints.length; i++) {
+                ctx.lineTo(screenPoints[i][0], screenPoints[i][1]);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+}
+
 class Sandbar {
     constructor(worldX, worldY, size) {
         this.worldX = worldX;
@@ -531,6 +619,7 @@ const miniMapCtx = miniMap.getContext('2d');
 let player1Boat;
 let aiBoats = [];
 let sandbars = [];
+let islands = [];
 let buoys = [];
 let waves = [];
 let windParticles = [];
@@ -571,7 +660,35 @@ function setup() {
     }
 
     for (let i = 0; i < 10; i++) {
-        sandbars.push(new Sandbar(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 150));
+        let newSandbar;
+        let overlapping;
+        do {
+            overlapping = false;
+            newSandbar = new Sandbar(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 150);
+            for (const island of islands) {
+                if (distance_sq([newSandbar.worldX, newSandbar.worldY], [island.worldX, island.worldY]) < (150 + 200) * (150 + 200)) {
+                    overlapping = true;
+                    break;
+                }
+            }
+        } while (overlapping);
+        sandbars.push(newSandbar);
+    }
+
+    for (let i = 0; i < 5; i++) {
+        let newIsland;
+        let overlapping;
+        do {
+            overlapping = false;
+            newIsland = new Island(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 200);
+            for (const sandbar of sandbars) {
+                if (distance_sq([newIsland.worldX, newIsland.worldY], [sandbar.worldX, sandbar.worldY]) < (200 + 150) * (200 + 150)) {
+                    overlapping = true;
+                    break;
+                }
+            }
+        } while (overlapping);
+        islands.push(newIsland);
     }
 
     const numBuoys = 8;
@@ -617,7 +734,12 @@ function gameLoop(timestamp) {
 }
 
 function update(dt) {
-    if (gameState !== 'racing') return;
+    if (gameState !== 'racing') {
+        // Still render the waves and sandbars
+        waves.forEach(w => w.update());
+        windParticles.forEach(p => p.update());
+        return;
+    }
     player1Boat.update(windSpeed, windDirection, dt);
     aiBoats.forEach(aiBoat => {
         aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection);
@@ -626,8 +748,22 @@ function update(dt) {
     waves.forEach(w => w.update());
     windParticles.forEach(p => p.update());
 
+    const allBoats = [player1Boat, ...aiBoats];
+    for (let i = 0; i < allBoats.length; i++) {
+        for (let j = i + 1; j < allBoats.length; j++) {
+            handle_boat_collision(allBoats[i], allBoats[j]);
+        }
+    }
+
+    // Island collision
+    allBoats.forEach(boat => {
+        islands.forEach(island => {
+            handle_boat_island_collision(boat, island);
+        });
+    });
+
     // Buoy collision
-    [player1Boat, ...aiBoats].forEach(boat => {
+    allBoats.forEach(boat => {
         if (!boat) return;
         if (boat.nextBuoyIndex < buoys.length) {
             const nextBuoy = buoys[boat.nextBuoyIndex];
@@ -726,6 +862,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
 
     sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
+    islands.forEach(i => i.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
     waves.forEach(w => w.draw(waveCtx));
@@ -796,13 +933,30 @@ window.onload = () => {
 
     document.getElementById('start-button').addEventListener('click', () => {
         document.getElementById('start-screen').style.display = 'none';
-        gameState = 'racing';
-        lastTime = performance.now();
+        gameState = 'countdown';
+        let count = 3;
+        const countdownElement = document.getElementById('countdown');
+        countdownElement.style.display = 'block';
+        countdownElement.textContent = count;
+        const countdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownElement.textContent = count;
+            } else if (count === 0) {
+                countdownElement.textContent = 'Sail!';
+            } else {
+                clearInterval(countdownInterval);
+                countdownElement.style.display = 'none';
+                gameState = 'racing';
+                lastTime = performance.now();
+                player1Boat.raceStartTime = lastTime;
+                aiBoats.forEach(b => b.raceStartTime = lastTime);
+            }
+        }, 1000);
     });
     document.getElementById('restart-button').addEventListener('click', () => {
         document.getElementById('race-over-screen').style.display = 'none';
         setup();
-        gameState = 'racing';
         lastTime = performance.now();
     });
 
