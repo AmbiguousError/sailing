@@ -75,6 +75,7 @@ canvas {
     height: 200px;
     border: 2px solid #333333;
     z-index: 2;
+    background-color: rgba(173, 221, 222, 0.5);
 }
 
 #touch-controls {
@@ -102,4 +103,16 @@ canvas {
     border: 2px solid #333333;
     border-radius: 50%;
     pointer-events: auto;
+}
+
+#start-screen, #race-over-screen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 20px;
+    text-align: center;
+    z-index: 3;
+    display: none;
 }
