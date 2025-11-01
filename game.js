@@ -574,13 +574,18 @@ class AIBoat extends Boat {
                 desiredHeading = onPortTack ? starboardTackHeading : portTackHeading;
                 this.tackDecisionTime = 5.0; // 5 second cooldown
             } else {
-                // If not tacking, maintain current tack or get on one if in irons
                 const currentAngleFromWind = Math.abs(angle_difference(this.heading, wind_direction));
-                if (currentAngleFromWind < MIN_SAILING_ANGLE - 10) { // In irons
-                    const portDiff = Math.abs(angle_difference(portTackHeading, headingToTarget));
-                    const starboardDiff = Math.abs(angle_difference(starboardTackHeading, headingToTarget));
-                    desiredHeading = (portDiff < starboardDiff) ? portTackHeading : starboardTackHeading;
+                if (currentAngleFromWind < MIN_SAILING_ANGLE - 5) {
+                    if (!this.stuckInIrons) {
+                        this.stuckInIrons = true;
+                        // Decide which tack is better and commit to it
+                        const portDiff = Math.abs(angle_difference(portTackHeading, headingToTarget));
+                        const starboardDiff = Math.abs(angle_difference(starboardTackHeading, headingToTarget));
+                        this.recoveryTack = (portDiff < starboardDiff) ? portTackHeading : starboardTackHeading;
+                    }
+                    desiredHeading = this.recoveryTack;
                 } else {
+                    this.stuckInIrons = false;
                     desiredHeading = currentTackLayline;
                 }
             }
@@ -854,21 +859,21 @@ function setup() {
         aiBoats.push(aiBoat);
     }
 
-    // const numIslands = 5;
-    // for (let i = 0; i < numIslands; i++) {
-    //     islands.push(new Island(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, Math.random() * 100 + 150));
-    // }
+    const numIslands = 5;
+    for (let i = 0; i < numIslands; i++) {
+        islands.push(new Island(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, Math.random() * 100 + 150));
+    }
 
-    // islands.forEach(island => {
-    //     const num_sandbars = Math.floor(Math.random() * 3) + 2; // 2-4 sandbars per island
-    //     for (let i = 0; i < num_sandbars; i++) {
-    //         const angle = Math.random() * 2 * Math.PI;
-    //         const distance = island.size / 2 + Math.random() * 100 + 50; // 50-150 units away
-    //         const x = island.worldX + Math.cos(angle) * distance;
-    //         const y = island.worldY + Math.sin(angle) * distance;
-    //         sandbars.push(new Sandbar(x, y, Math.random() * 50 + 50)); // 50-100 size
-    //     }
-    // });
+    islands.forEach(island => {
+        const num_sandbars = Math.floor(Math.random() * 3) + 2; // 2-4 sandbars per island
+        for (let i = 0; i < num_sandbars; i++) {
+            const angle = Math.random() * 2 * Math.PI;
+            const distance = island.size / 2 + Math.random() * 100 + 50; // 50-150 units away
+            const x = island.worldX + Math.cos(angle) * distance;
+            const y = island.worldY + Math.sin(angle) * distance;
+            sandbars.push(new Sandbar(x, y, Math.random() * 50 + 50)); // 50-100 size
+        }
+    });
 
     const numBuoys = 8;
     const center_x = 0;
@@ -964,11 +969,11 @@ function update(dt) {
     }
 
     // Island collision
-    // allBoats.forEach(boat => {
-    //     islands.forEach(island => {
-    //         handle_boat_island_collision(boat, island);
-    //     });
-    // });
+    allBoats.forEach(boat => {
+        islands.forEach(island => {
+            handle_boat_island_collision(boat, island);
+        });
+    });
 
     // Buoy collision
     allBoats.forEach(boat => {
@@ -1031,7 +1036,7 @@ function render() {
 
     renderWaves(worldOffsetX, worldOffsetY, viewCenter);
 
-    // islands.forEach(i => i.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
+    islands.forEach(i => i.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
     player1Boat.wakeParticles.forEach(p => p.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
@@ -1092,19 +1097,61 @@ function renderWaves(offsetX, offsetY, viewCenter) {
 
 function drawMiniMap() {
     const mapSize = 200;
-    const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    miniMapCtx.fillStyle = 'rgba(173, 216, 230, 0.6)'; // Light blue with 60% opacity
-    miniMapCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-    miniMapCtx.lineWidth = 2;
+    // Determine the bounds of all important objects
+    let minX = player1Boat.worldX;
+    let maxX = player1Boat.worldX;
+    let minY = player1Boat.worldY;
+    let maxY = player1Boat.worldY;
 
+    buoys.forEach(b => {
+        minX = Math.min(minX, b.worldX);
+        maxX = Math.max(maxX, b.worldX);
+        minY = Math.min(minY, b.worldY);
+        maxY = Math.max(maxY, b.worldY);
+    });
+
+    const worldWidth = maxX - minX;
+    const worldHeight = maxY - minY;
+    const worldCenterX = (minX + maxX) / 2;
+    const worldCenterY = (minY + maxY) / 2;
+
+    // Add a padding to the bounds
+    const padding = 200;
+    const effectiveWorldSize = Math.max(worldWidth, worldHeight) + padding * 2;
+
+    const worldScale = mapSize / effectiveWorldSize;
+
+    miniMapCtx.fillStyle = 'rgba(173, 216, 230, 0.6)';
     miniMapCtx.clearRect(0, 0, mapSize, mapSize);
     miniMapCtx.fillRect(0, 0, mapSize, mapSize);
     miniMapCtx.strokeRect(0, 0, mapSize, mapSize);
 
 
-    const playerX = player1Boat.worldX * worldScale + mapSize / 2;
-    const playerY = player1Boat.worldY * worldScale + mapSize / 2;
+    const transformX = (worldX) => (worldX - worldCenterX) * worldScale + mapSize / 2;
+    const transformY = (worldY) => (worldY - worldCenterY) * worldScale + mapSize / 2;
+
+    // Draw Islands
+    islands.forEach(island => {
+        const screenPoints = island.pointsWorld.map(([worldX, worldY]) => [
+            transformX(worldX),
+            transformY(worldY)
+        ]);
+
+        if (screenPoints.length > 2) {
+            miniMapCtx.fillStyle = 'rgba(139, 69, 19, 0.8)'; // SaddleBrown
+            miniMapCtx.beginPath();
+            miniMapCtx.moveTo(screenPoints[0][0], screenPoints[0][1]);
+            for (let i = 1; i < screenPoints.length; i++) {
+                miniMapCtx.lineTo(screenPoints[i][0], screenPoints[i][1]);
+            }
+            miniMapCtx.closePath();
+            miniMapCtx.fill();
+        }
+    });
+
+    const playerX = transformX(player1Boat.worldX);
+    const playerY = transformY(player1Boat.worldY);
 
     const playerRad = deg_to_rad(player1Boat.heading);
     miniMapCtx.save();
