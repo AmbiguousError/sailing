@@ -80,6 +80,7 @@ canvas {
     height: 200px;
     border: 2px solid #333333;
     z-index: 2;
+    background-color: rgba(173, 221, 222, 0.5);
 }
 
 #touch-controls {

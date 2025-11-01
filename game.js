@@ -1024,7 +1024,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
-    waves.forEach(w => w.draw(waveCtx));
+    waves.forEach(w => w.draw(waveCtx, waveCanvas.width, waveCanvas.height, offsetX, offsetY));
     windParticles.forEach(p => p.draw(waveCtx));
 }
 
@@ -1034,6 +1034,7 @@ function drawMiniMap() {
 
     // Clear the map with a completely transparent background
     miniMapCtx.clearRect(0, 0, mapSize, mapSize);
+
 
 
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
