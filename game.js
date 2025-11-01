@@ -69,54 +69,51 @@ function handle_boat_collision(boat1, boat2) {
     if (dist_sq < min_dist * min_dist && dist_sq > 0) {
         const dist = Math.sqrt(dist_sq);
         const overlap = min_dist - dist;
+        const nx = (boat2.worldX - boat1.worldX) / dist;
+        const ny = (boat2.worldY - boat1.worldY) / dist;
 
-        const dx = boat2.worldX - boat1.worldX;
-        const dy = boat2.worldY - boat1.worldY;
-        const nx = dx / dist;
-        const ny = dy / dist;
+        // Resolve Overlap
+        boat1.worldX -= nx * overlap * 0.5;
+        boat1.worldY -= ny * overlap * 0.5;
+        boat2.worldX += nx * overlap * 0.5;
+        boat2.worldY += ny * overlap * 0.5;
 
-        // 1. Resolve Overlap: Push boats apart so they are just touching.
-        const correctionX = nx * (overlap / 2);
-        const correctionY = ny * (overlap / 2);
-        boat1.worldX -= correctionX;
-        boat1.worldY -= correctionY;
-        boat2.worldX += correctionX;
-        boat2.worldY += correctionY;
-
-        // 2. Calculate Impulse (bouncing):
+        // Decompose speeds into vectors
         const boat1_vx = Math.cos(deg_to_rad(boat1.heading)) * boat1.speed;
         const boat1_vy = Math.sin(deg_to_rad(boat1.heading)) * boat1.speed;
         const boat2_vx = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed;
         const boat2_vy = Math.sin(deg_to_rad(boat2.heading)) * boat2.speed;
 
+        // Relative velocity
         const rvx = boat2_vx - boat1_vx;
         const rvy = boat2_vy - boat1_vy;
         const velAlongNormal = rvx * nx + rvy * ny;
+        if (velAlongNormal > 0) return;
 
-        if (velAlongNormal > 0) {
-            return; // Boats are already moving apart
-        }
-
-        const restitution = 0.8; // Bounciness
+        // More pronounced "bump"
+        const restitution = 0.9;
         const j = -(1 + restitution) * velAlongNormal;
 
         const impulseX = j * nx;
         const impulseY = j * ny;
 
-        const new_boat1_vx = boat1_vx - impulseX;
-        const new_boat1_vy = boat1_vy - impulseY;
-        const new_boat2_vx = boat2_vx + impulseX;
-        const new_boat2_vy = boat2_vy + impulseY;
+        // Apply impulse without drastically changing heading
+        const new_boat1_vx = boat1_vx - impulseX * 0.5;
+        const new_boat1_vy = boat1_vy - impulseY * 0.5;
+        const new_boat2_vx = boat2_vx + impulseX * 0.5;
+        const new_boat2_vy = boat2_vy + impulseY * 0.5;
 
-        // 3. Apply new velocities
         boat1.speed = Math.min(MAX_BOAT_SPEED, Math.sqrt(new_boat1_vx**2 + new_boat1_vy**2));
-        if (boat1.speed > 0.1) {
-            boat1.heading = rad_to_deg(Math.atan2(new_boat1_vy, new_boat1_vx));
-        }
-
         boat2.speed = Math.min(MAX_BOAT_SPEED, Math.sqrt(new_boat2_vx**2 + new_boat2_vy**2));
-        if (boat2.speed > 0.1) {
-            boat2.heading = rad_to_deg(Math.atan2(new_boat2_vy, new_boat2_vx));
+
+        // Nudge heading slightly instead of forcing it, preserving momentum direction
+        if (boat1.speed > 0.2) {
+             const new_heading = rad_to_deg(Math.atan2(new_boat1_vy, new_boat1_vx));
+             boat1.heading = normalize_angle(boat1.heading + angle_difference(new_heading, boat1.heading) * 0.3);
+        }
+        if (boat2.speed > 0.2) {
+             const new_heading = rad_to_deg(Math.atan2(new_boat2_vy, new_boat2_vx));
+             boat2.heading = normalize_angle(boat2.heading + angle_difference(new_heading, boat2.heading) * 0.3);
         }
     }
 }
@@ -189,28 +186,31 @@ class WindParticle {
 }
 
 class Wave {
-    constructor(y, amplitude, wavelength, speed, color) {
-        this.y = y;
+    constructor(amplitude, wavelength, speed, color, offset) {
         this.amplitude = amplitude;
         this.wavelength = wavelength;
         this.speed = speed;
         this.color = color;
         this.time = Math.random() * 100;
+        this.offset = offset;
     }
 
     update(dt) {
         this.time += dt * this.speed;
     }
 
-    draw(ctx, width, height) {
-        ctx.beginPath();
-        ctx.moveTo(0, this.y);
+    draw(ctx, width, height, worldOffsetX, worldOffsetY) {
+        const parallaxFactor = 0.1;
+        const startY = height / 2 + this.offset;
 
-        const segmentLength = 10; // Draw the wave in segments
-        for (let i = 0; i <= width; i += segmentLength) {
-            const angle = (i / this.wavelength) * 2 * Math.PI + this.time;
-            const yOffset = Math.sin(angle) * this.amplitude;
-            ctx.lineTo(i, this.y + yOffset);
+        ctx.beginPath();
+        ctx.moveTo(0, startY + Math.sin(this.time) * this.amplitude);
+
+        for (let x = 0; x <= width; x += 10) {
+            const worldX = x + worldOffsetX * parallaxFactor;
+            const angle = (worldX / this.wavelength) * 2 * Math.PI + this.time;
+            const y = startY + Math.sin(angle) * this.amplitude;
+            ctx.lineTo(x, y);
         }
 
         ctx.strokeStyle = this.color;
@@ -524,83 +524,85 @@ class AIBoat extends Boat {
     updateControls(target_buoy, wind_direction, islands, dt) {
         if (!target_buoy) return;
 
-        // --- Obstacle Avoidance Logic (Largely unchanged) ---
+        // --- Obstacle Avoidance Logic ---
         if (this.avoidanceManeuver) {
             this.avoidanceManeuver.timeLeft -= dt;
             if (this.avoidanceManeuver.timeLeft > 0) {
                 this.turn(this.avoidanceManeuver.turnDirection);
                 this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
-                return;
+                return; // Continue maneuver
             } else {
-                this.avoidanceManeuver = null;
+                this.avoidanceManeuver = null; // Maneuver complete
             }
         }
         for (const island of islands) {
-            const lookahead_time = 4 / (this.speed + 1) + 1;
+            const lookahead_time = 4 / (this.speed + 1) + 1; // Look further ahead at low speed
             if (is_on_collision_course(this, island, lookahead_time)) {
                 const angle_to_island = normalize_angle(rad_to_deg(Math.atan2(island.worldY - this.worldY, island.worldX - this.worldX)));
                 const angle_diff = angle_difference(angle_to_island, this.heading);
-                const turnDirection = angle_diff > 0 ? -1 : 1;
-                this.avoidanceManeuver = { island: island, turnDirection: turnDirection, timeLeft: 2.5 };
+                const turnDirection = angle_diff > 0 ? -1 : 1; // Turn away
+                this.avoidanceManeuver = {
+                    island: island,
+                    turnDirection: turnDirection,
+                    timeLeft: 2.5 // Commit to the turn for 2.5 seconds
+                };
                 this.turn(this.avoidanceManeuver.turnDirection);
                 this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
-                return;
+                return; // Start maneuver immediately
             }
         }
 
-        // --- NEW, SIMPLER NAVIGATION LOGIC ---
+        // --- Standard Navigation Logic ---
         const headingToTarget = normalize_angle(rad_to_deg(Math.atan2(target_buoy.worldY - this.worldY, target_buoy.worldX - this.worldX)));
+        const isUpwind = Math.abs(angle_difference(headingToTarget, wind_direction)) < MIN_SAILING_ANGLE;
 
         let desiredHeading;
-        const angleToWind = Math.abs(angle_difference(headingToTarget, wind_direction));
 
-        if (angleToWind >= MIN_SAILING_ANGLE) {
-            // Path is clear, head directly to target
+        if (!isUpwind) {
+            // The buoy is not upwind, so we can sail directly towards it.
             desiredHeading = headingToTarget;
         } else {
-            // Path is into the wind, must tack
-            const portTack = normalize_angle(wind_direction + MIN_SAILING_ANGLE);
-            const starboardTack = normalize_angle(wind_direction - MIN_SAILING_ANGLE);
+            // The buoy is upwind, so we need to tack.
 
-            const portDiff = Math.abs(angle_difference(portTack, headingToTarget));
-            const starboardDiff = Math.abs(angle_difference(starboardTack, headingToTarget));
-
-            // Choose the tack that gets us closer to the target
-            const preferredTack = (portDiff < starboardDiff) ? portTack : starboardTack;
-
-            // Check if we are already on a tack
             const currentAngleFromWind = angle_difference(this.heading, wind_direction);
-            const onTack = Math.abs(currentAngleFromWind) > MIN_SAILING_ANGLE - 15;
+            // Check if we are on a valid tack (not in irons). A 10 degree buffer is used.
+            const onValidTack = Math.abs(currentAngleFromWind) > (MIN_SAILING_ANGLE - 10);
 
-            if (onTack) {
-                // We are on a tack. When should we switch?
-                // Switch when the target is on the other side of our boat's nose.
-                const angleToTarget = angle_difference(headingToTarget, this.heading);
-                const onPortTack = currentAngleFromWind > 0;
+            const portTackHeading = normalize_angle(wind_direction + MIN_SAILING_ANGLE);
+            const starboardTackHeading = normalize_angle(wind_direction - MIN_SAILING_ANGLE);
 
-                if (onPortTack && angleToTarget < 0) { // On port, target is to starboard (right)
-                    desiredHeading = starboardTack;
-                } else if (!onPortTack && angleToTarget > 0) { // On starboard, target is to port (left)
-                    desiredHeading = portTack;
-                } else {
-                    // Stay on current tack
-                    desiredHeading = onPortTack ? portTack : starboardTack;
-                }
+            if (!onValidTack) {
+                // We are stuck in irons or on a poor tack. Choose the best tack to get started.
+                const portDiff = Math.abs(angle_difference(portTackHeading, headingToTarget));
+                const starboardDiff = Math.abs(angle_difference(starboardTackHeading, headingToTarget));
+                desiredHeading = (portDiff < starboardDiff) ? portTackHeading : starboardTackHeading;
             } else {
-                // Not on a tack (e.g. stuck in irons), so pick the best one to start.
-                desiredHeading = preferredTack;
+                // We are already on a valid tack. Decide whether to switch tacks.
+                const onPortTack = currentAngleFromWind > 0;
+                const targetIsToStarboard = angle_difference(headingToTarget, this.heading) < 0;
+                const targetIsToPort = angle_difference(headingToTarget, this.heading) > 0;
+
+                // Tack when the target buoy has crossed over the boat's bow.
+                if (onPortTack && targetIsToStarboard) {
+                    desiredHeading = starboardTackHeading;
+                } else if (!onPortTack && targetIsToPort) {
+                    desiredHeading = portTackHeading;
+                } else {
+                    // Continue on the current tack.
+                    desiredHeading = onPortTack ? portTackHeading : starboardTackHeading;
+                }
             }
         }
 
         const finalHeading = normalize_angle(desiredHeading + this.headingError);
         const headingDiff = angle_difference(finalHeading, this.heading);
 
-        // Steer
+        // Steer towards the desired heading.
         if (headingDiff > 5) this.turn(1);
         else if (headingDiff < -5) this.turn(-1);
         else this.turn(0);
 
-        // Trim sails
+        // Trim sails based on the actual current heading for optimal speed.
         this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
     }
 
@@ -780,6 +782,7 @@ const windArrow = document.getElementById('wind-arrow');
 const optimalSailAngleElement = document.getElementById('optimal-sail-angle');
 const speedReading = document.getElementById('speed-reading');
 const lapsElement = document.getElementById('laps');
+const nextBuoyElement = document.getElementById('next-buoy');
 const miniMap = document.getElementById('mini-map');
 const miniMapCtx = miniMap.getContext('2d');
 
@@ -852,9 +855,9 @@ function setup() {
     }
 
     waves = [
-        new Wave(canvas.height * 0.45, 15, 200, 1.5, 'rgba(255, 255, 255, 0.4)'),
-        new Wave(canvas.height * 0.50, 20, 250, 1.0, 'rgba(255, 255, 255, 0.3)'),
-        new Wave(canvas.height * 0.55, 10, 180, 2.0, 'rgba(255, 255, 255, 0.5)')
+        new Wave(20, 250, 1.0, 'rgba(255, 255, 255, 0.5)', 0),
+        new Wave(15, 200, -1.3, 'rgba(255, 255, 255, 0.4)', 20),
+        new Wave(10, 150, 1.6, 'rgba(255, 255, 255, 0.3)', -15)
     ];
 
     for (let i = 0; i < 50; i++) {
@@ -1000,6 +1003,7 @@ function render() {
     optimalSailAngleElement.style.transform = `rotate(${player1Boat.optimalSailTrim + player1Boat.heading}deg)`;
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
     lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
+    nextBuoyElement.textContent = `Next Buoy: ${player1Boat.nextBuoyIndex + 1}`;
 
     drawMiniMap();
 }
@@ -1030,7 +1034,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
-    waves.forEach(w => w.draw(waveCtx, waveCanvas.width, waveCanvas.height));
+    waves.forEach(w => w.draw(waveCtx, waveCanvas.width, waveCanvas.height, offsetX, offsetY));
     windParticles.forEach(p => p.draw(waveCtx));
 }
 
