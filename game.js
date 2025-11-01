@@ -595,7 +595,36 @@ class AIBoat extends Boat {
         if (Math.abs(headingDiff) > 2) {
             this.turn(Math.sign(headingDiff));
         } else {
-            this.turn(0);
+            // The buoy is upwind, so we need to tack.
+
+            const currentAngleFromWind = angle_difference(this.heading, wind_direction);
+            // Check if we are on a valid tack (not in irons). A 10 degree buffer is used.
+            const onValidTack = Math.abs(currentAngleFromWind) > (MIN_SAILING_ANGLE - 10);
+
+            const portTackHeading = normalize_angle(wind_direction + MIN_SAILING_ANGLE);
+            const starboardTackHeading = normalize_angle(wind_direction - MIN_SAILING_ANGLE);
+
+            if (!onValidTack) {
+                // We are stuck in irons or on a poor tack. Choose the best tack to get started.
+                const portDiff = Math.abs(angle_difference(portTackHeading, headingToTarget));
+                const starboardDiff = Math.abs(angle_difference(starboardTackHeading, headingToTarget));
+                desiredHeading = (portDiff < starboardDiff) ? portTackHeading : starboardTackHeading;
+            } else {
+                // We are already on a valid tack. Decide whether to switch tacks.
+                const onPortTack = currentAngleFromWind > 0;
+                const targetIsToStarboard = angle_difference(headingToTarget, this.heading) < 0;
+                const targetIsToPort = angle_difference(headingToTarget, this.heading) > 0;
+
+                // Tack when the target buoy has crossed over the boat's bow.
+                if (onPortTack && targetIsToStarboard) {
+                    desiredHeading = starboardTackHeading;
+                } else if (!onPortTack && targetIsToPort) {
+                    desiredHeading = portTackHeading;
+                } else {
+                    // Continue on the current tack.
+                    desiredHeading = onPortTack ? portTackHeading : starboardTackHeading;
+                }
+            }
         }
 
         // Apply sail trim
@@ -1057,7 +1086,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     // sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
-    waves.forEach(w => w.draw(waveCtx));
+    waves.forEach(w => w.draw(waveCtx, waveCanvas.width, waveCanvas.height, offsetX, offsetY));
     windParticles.forEach(p => p.draw(waveCtx));
 }
 
