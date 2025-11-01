@@ -708,12 +708,14 @@ function setup() {
     player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "#87CEEB");
     player1Boat.worldX = 0;
     player1Boat.worldY = 0;
+    player1Boat.raceStartTime = performance.now();
 
     const numOpponents = 3;
     for (let i = 0; i < numOpponents; i++) {
         const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, `hsl(${Math.random() * 360}, 100%, 75%)`);
         aiBoat.worldX = -50 * (i + 1);
         aiBoat.worldY = -50 * (i + 1);
+        aiBoat.raceStartTime = performance.now();
         aiBoats.push(aiBoat);
     }
 
@@ -918,6 +920,7 @@ function renderWaves(offsetX, offsetY, viewCenter) {
     waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
 
     sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
+    islands.forEach(i => i.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
     waves.forEach(w => w.draw(waveCtx));
