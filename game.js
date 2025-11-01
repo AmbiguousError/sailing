@@ -70,52 +70,45 @@ function handle_boat_collision(boat1, boat2) {
         const dist = Math.sqrt(dist_sq);
         const overlap = min_dist - dist;
 
-        // Collision normal
         const dx = boat2.worldX - boat1.worldX;
         const dy = boat2.worldY - boat1.worldY;
         const nx = dx / dist;
         const ny = dy / dist;
 
-        // Push boats apart to resolve overlap
-        boat1.worldX -= nx * overlap * 0.5;
-        boat1.worldY -= ny * overlap * 0.5;
-        boat2.worldX += nx * overlap * 0.5;
-        boat2.worldY += ny * overlap * 0.5;
+        // 1. Resolve Overlap: Push boats apart so they are just touching.
+        const correctionX = nx * (overlap / 2);
+        const correctionY = ny * (overlap / 2);
+        boat1.worldX -= correctionX;
+        boat1.worldY -= correctionY;
+        boat2.worldX += correctionX;
+        boat2.worldY += correctionY;
 
-        // Decompose speeds into vectors
+        // 2. Calculate Impulse (bouncing):
         const boat1_vx = Math.cos(deg_to_rad(boat1.heading)) * boat1.speed;
         const boat1_vy = Math.sin(deg_to_rad(boat1.heading)) * boat1.speed;
         const boat2_vx = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed;
         const boat2_vy = Math.sin(deg_to_rad(boat2.heading)) * boat2.speed;
 
-        // Relative velocity
         const rvx = boat2_vx - boat1_vx;
         const rvy = boat2_vy - boat1_vy;
-
-        // Velocity along the normal
         const velAlongNormal = rvx * nx + rvy * ny;
 
-        // Do not resolve if velocities are separating
         if (velAlongNormal > 0) {
-            return;
+            return; // Boats are already moving apart
         }
 
-        // Coefficient of restitution (bounciness) - increased for more "bump"
-        const restitution = 0.9;
+        const restitution = 0.8; // Bounciness
+        const j = -(1 + restitution) * velAlongNormal;
 
-        // Calculate impulse scalar (assuming equal mass for simplicity)
-        let j = -(1 + restitution) * velAlongNormal;
-
-        // Apply impulse
         const impulseX = j * nx;
         const impulseY = j * ny;
 
-        const new_boat1_vx = boat1_vx + impulseX;
-        const new_boat1_vy = boat1_vy + impulseY;
-        const new_boat2_vx = boat2_vx - impulseX;
-        const new_boat2_vy = boat2_vy - impulseY;
+        const new_boat1_vx = boat1_vx - impulseX;
+        const new_boat1_vy = boat1_vy - impulseY;
+        const new_boat2_vx = boat2_vx + impulseX;
+        const new_boat2_vy = boat2_vy + impulseY;
 
-        // Convert vectors back to speed and heading for each boat
+        // 3. Apply new velocities
         boat1.speed = Math.min(MAX_BOAT_SPEED, Math.sqrt(new_boat1_vx**2 + new_boat1_vy**2));
         if (boat1.speed > 0.1) {
             boat1.heading = rad_to_deg(Math.atan2(new_boat1_vy, new_boat1_vx));
@@ -826,8 +819,9 @@ function setup() {
     const numOpponents = 3;
     for (let i = 0; i < numOpponents; i++) {
         const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, `hsl(${Math.random() * 360}, 100%, 75%)`);
-        aiBoat.worldX = -50 * (i + 1);
-        aiBoat.worldY = -50 * (i + 1);
+        // Spread them out more at the start
+        aiBoat.worldX = -60 * (i + 1);
+        aiBoat.worldY = 60 * (i % 2 === 0 ? 1 : -1);
         aiBoats.push(aiBoat);
     }
 
