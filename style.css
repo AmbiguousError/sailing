@@ -103,3 +103,38 @@ canvas {
     border-radius: 50%;
     pointer-events: auto;
 }
+
+#start-screen, #results-screen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 2em;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 500px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.instructions {
+    text-align: left;
+    margin-bottom: 1.5em;
+}
+
+.instructions h2 {
+    margin-top: 0;
+}
+
+.instructions ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.instructions li {
+    margin-bottom: 0.5em;
+}
