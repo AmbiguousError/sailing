@@ -139,6 +139,15 @@ function handle_boat_island_collision(boat, island) {
     }
 }
 
+function handle_boat_sandbar_collision(boat, sandbar) {
+    const dist_sq = distance_sq([boat.worldX, boat.worldY], [sandbar.worldX, sandbar.worldY]);
+    const min_dist = boat.collisionRadius + sandbar.collisionRadius;
+    if (dist_sq < min_dist * min_dist) {
+        return true;
+    }
+    return false;
+}
+
 
 class WindParticle {
     constructor(windDirection, windSpeed) {
@@ -353,7 +362,7 @@ class Boat {
         this.speed += acceleration * dt;
         let dragFactor = (1.0 - BOAT_DRAG);
         if (this.onSandbar) {
-            dragFactor *= SANDBAR_DRAG_MULTIPLIER;
+            this.speed *= SANDBAR_DRAG_MULTIPLIER;
         }
         const dragForce = Math.pow(this.speed, 1.8) * dragFactor;
         this.speed -= dragForce * dt;
@@ -509,6 +518,8 @@ class AIBoat extends Boat {
 
         this.tackDecisionTime = 0;
         this.avoidanceManeuver = null; // To handle sustained obstacle avoidance
+        this.stuckInIrons = false;
+        this.recoveryTurnDirection = 0;
     }
 
     updateControls(target_buoy, wind_direction, islands, dt) {
@@ -577,23 +588,30 @@ class AIBoat extends Boat {
                 desiredHeading = onPortTack ? starboardTackHeading : portTackHeading;
                 this.tackDecisionTime = 5.0; // 5 second cooldown
             } else {
-                const currentAngleFromWind = Math.abs(angle_difference(this.heading, wind_direction));
-                if (currentAngleFromWind < MIN_SAILING_ANGLE - 5) {
-                    if (!this.stuckInIrons) {
-                        this.stuckInIrons = true;
-                        // Decide which tack is better and commit to it
-                        const portDiff = Math.abs(angle_difference(portTackHeading, headingToTarget));
-                        const starboardDiff = Math.abs(angle_difference(starboardTackHeading, headingToTarget));
-                        this.recoveryTack = (portDiff < starboardDiff) ? portTackHeading : starboardTackHeading;
-                    }
-                    desiredHeading = this.recoveryTack;
-                } else {
-                    this.stuckInIrons = false;
-                    desiredHeading = currentTackLayline;
-                }
+                desiredHeading = currentTackLayline;
             }
         } else { // Target is downwind or reachable
             desiredHeading = headingToTarget;
+        }
+
+        // --- In Irons Recovery ---
+        const currentAngleFromWind = Math.abs(angle_difference(this.heading, wind_direction));
+        if (currentAngleFromWind < MIN_SAILING_ANGLE - 5 && this.speed < 1.0) {
+            if (!this.stuckInIrons) {
+                this.stuckInIrons = true;
+                // Decide which way to turn for recovery. Turn away from the wind.
+                this.recoveryTurnDirection = angle_difference(this.heading, wind_direction) > 0 ? -1 : 1;
+            }
+        } else if (this.stuckInIrons && currentAngleFromWind > MIN_SAILING_ANGLE) {
+            // We have successfully recovered
+            this.stuckInIrons = false;
+            this.recoveryTurnDirection = 0;
+        }
+
+        if (this.stuckInIrons) {
+            this.turn(this.recoveryTurnDirection);
+            this.sailAngleRel = this.calculateOptimalSailTrim(wind_direction);
+            return; // Override all other navigation while stuck
         }
 
         const finalHeading = normalize_angle(desiredHeading + this.headingError);
@@ -719,6 +737,7 @@ class Sandbar {
         this.size = size;
         this.pointsRel = this._generateRandomPoints(size);
         this.pointsWorld = this.pointsRel.map(p => [p[0] + worldX, p[1] + worldY]);
+        this.collisionRadius = size / 2;
     }
     _generateRandomPoints(size) {
         const points = [];
@@ -992,7 +1011,9 @@ function update(dt) {
 
     player1Boat.update(windSpeed, windDirection, dt);
     aiBoats.forEach(aiBoat => {
-        aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection, islands, dt);
+        if (!aiBoat.isFinished) {
+            aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection, islands, dt);
+        }
         aiBoat.update(windSpeed, windDirection, dt);
     });
     waves.forEach(w => w.update(dt));
@@ -1005,8 +1026,15 @@ function update(dt) {
         }
     }
 
-    // Island collision
+    // Island and Sandbar collision
     allBoats.forEach(boat => {
+        boat.onSandbar = false; // Reset at the beginning of the check
+        sandbars.forEach(sandbar => {
+            if (handle_boat_sandbar_collision(boat, sandbar)) {
+                boat.onSandbar = true;
+            }
+        });
+
         islands.forEach(island => {
             handle_boat_island_collision(boat, island);
         });
@@ -1014,7 +1042,7 @@ function update(dt) {
 
     // Buoy collision
     allBoats.forEach(boat => {
-        if (!boat) return;
+        if (!boat || boat.isFinished) return;
         if (boat.nextBuoyIndex < buoys.length) {
             const nextBuoy = buoys[boat.nextBuoyIndex];
             const distSq = distance_sq([boat.worldX, boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
@@ -1099,8 +1127,8 @@ function render() {
     windArrow.style.transform = `rotate(${windDirection}deg)`;
     optimalSailAngleElement.style.transform = `rotate(${player1Boat.optimalSailTrim + player1Boat.heading}deg)`;
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
-    lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
-    nextBuoyElement.textContent = `Next Buoy: ${player1Boat.nextBuoyIndex + 1}`;
+    lapsElement.textContent = `Lap: ${player1Boat.isFinished ? 'Finished' : player1Boat.currentLap}`;
+    nextBuoyElement.textContent = `Next Buoy: ${player1Boat.isFinished ? '-' : player1Boat.nextBuoyIndex + 1}`;
 
     drawMiniMap();
 }
@@ -1142,7 +1170,7 @@ function drawMiniMap() {
     let minY = player1Boat.worldY;
     let maxY = player1Boat.worldY;
 
-    const allObjects = [...buoys, ...islands, player1Boat];
+    const allObjects = [...buoys, ...islands, player1Boat, ...aiBoats];
     allObjects.forEach(obj => {
         const radius = obj.collisionRadius || 0;
         minX = Math.min(minX, obj.worldX - radius);
@@ -1207,8 +1235,8 @@ function drawMiniMap() {
     miniMapCtx.restore();
 
     aiBoats.forEach(aiBoat => {
-        const aiX = aiBoat.worldX * worldScale + mapSize / 2;
-        const aiY = aiBoat.worldY * worldScale + mapSize / 2;
+        const aiX = transformX(aiBoat.worldX);
+        const aiY = transformY(aiBoat.worldY);
         const aiRad = deg_to_rad(aiBoat.heading);
         miniMapCtx.save();
         miniMapCtx.translate(aiX, aiY);
