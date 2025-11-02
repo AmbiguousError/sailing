@@ -175,40 +175,36 @@ class WindParticle {
 }
 
 class Wave {
-    constructor(config) {
+    constructor(y, speed, length, amplitude, color) {
+        this.y = y;
         this.x = Math.random() * SCREEN_WIDTH;
-        this.y = Math.random() * SCREEN_HEIGHT;
-        this.radius = Math.random() * 5 + 2;
-        this.speed = config.speed * (0.5 + Math.random() * 0.5);
-        this.angle = Math.random() * 2 * Math.PI;
-        this.color = config.color;
-        this.lineWidth = config.lineWidth;
-        this.time = 0;
-        this.lifetime = Math.random() * 2 + 3; // Live for 3-5 seconds
+        this.speed = speed;
+        this.length = length;
+        this.amplitude = amplitude;
+        this.color = color;
+        this.time = Math.random() * 100;
     }
 
     update(dt) {
-        this.x += Math.cos(this.angle) * this.speed * dt;
-        this.y += Math.sin(this.angle) * this.speed * dt;
+        this.x += this.speed * dt;
         this.time += dt;
-
-        // Reset if it goes off-screen or its lifetime ends
-        if (this.x < 0 || this.x > SCREEN_WIDTH || this.y < 0 || this.y > SCREEN_HEIGHT || this.time > this.lifetime) {
-            this.x = Math.random() * SCREEN_WIDTH;
-            this.y = Math.random() * SCREEN_HEIGHT;
-            this.time = 0;
-            this.lifetime = Math.random() * 2 + 3;
+        if (this.x > SCREEN_WIDTH + this.length) {
+            this.x = -this.length;
         }
     }
 
     draw(ctx) {
-        const lifeRatio = this.time / this.lifetime;
-        const alpha = Math.sin(lifeRatio * Math.PI); // Fade in and out
-
+        const segmentLength = 5;
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
-        ctx.strokeStyle = `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${alpha * 0.5})`;
-        ctx.lineWidth = this.lineWidth;
+        ctx.moveTo(this.x, this.y);
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2;
+
+        for (let i = 0; i < this.length; i += segmentLength) {
+            const currentX = this.x + i;
+            const currentY = this.y + Math.sin(this.time + i / (this.length / 4)) * this.amplitude;
+            ctx.lineTo(currentX, currentY);
+        }
         ctx.stroke();
     }
 }
@@ -938,6 +934,15 @@ function setup() {
         buoys.push(new Buoy(x, y, i));
     }
 
+    for (let i = 0; i < 15; i++) {
+        const y = (i / 15) * SCREEN_HEIGHT;
+        const speed = Math.random() * 20 + 10;
+        const length = Math.random() * 100 + 50;
+        const amplitude = Math.random() * 5 + 2;
+        waves.push(new Wave(y, speed, length, amplitude, 'rgba(255, 255, 255, 0.4)'));
+        waves.push(new Wave(y, speed * 0.8, length * 1.2, amplitude * 0.7, 'rgba(255, 255, 255, 0.2)'));
+    }
+
     const waveConfigs = [
         { count: 30, speed: 20, color: [255, 255, 255], lineWidth: 2 },
         { count: 25, speed: 30, color: [255, 255, 255], lineWidth: 1.5 },
@@ -1068,6 +1073,7 @@ function render() {
 
     renderWaves(worldOffsetX, worldOffsetY, viewCenter);
 
+    sandbars.forEach(s => s.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
     islands.forEach(i => i.draw(ctx, worldOffsetX, worldOffsetY, viewCenter));
 
     [player1Boat, ...aiBoats].forEach(boat => {
@@ -1121,8 +1127,6 @@ function drawWindIndicator(ctx) {
 function renderWaves(offsetX, offsetY, viewCenter) {
     waveCtx.fillStyle = WATER_COLOR;
     waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
-
-    // sandbars.forEach(s => s.draw(waveCtx, offsetX, offsetY, viewCenter));
 
     drawWindIndicator(waveCtx);
     waves.forEach(w => w.draw(waveCtx, waveCanvas.width, waveCanvas.height, offsetX, offsetY));
