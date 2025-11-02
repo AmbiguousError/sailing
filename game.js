@@ -5,11 +5,11 @@ const SCREEN_WIDTH = 800;
 const SCREEN_HEIGHT = 600;
 const WORLD_BOUNDS = 2000;
 const BOAT_ACCEL_FACTOR = 0.1;
-const BOAT_TURN_SPEED = 1.0;
+const BOAT_TURN_SPEED = 1.2;
 const MAX_BOAT_SPEED = 5.0;
 const SAIL_TRIM_SPEED = 2.0;
 const MAX_SAIL_ANGLE_REL = 90;
-const MIN_SAILING_ANGLE = 45;
+const MIN_SAILING_ANGLE = 50;
 const WAKE_LIFETIME = 2.0;
 const MAX_WAKE_PARTICLES = 100;
 const WAKE_SPAWN_INTERVAL = 0.1;
@@ -398,58 +398,57 @@ class AIBoat extends Boat {
     constructor(x, y, name = "AI", boatColor = "red") {
         super(x, y, name, boatColor);
         this.aggressiveness = Math.random() * 0.5 + 0.5; // Performance variability
-        this.state = 'sailing'; // Initial state: 'sailing', 'stuck', 'avoiding'
-        this.stuckTimer = 0;
+        this.isTacking = false;
+        this.tackDirection = 1; // 1 for port (right of wind), -1 for starboard (left of wind)
     }
 
     updateControls(target_buoy, wind_direction) {
         if (!target_buoy) return;
 
-        const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
-        const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
-
-        // --- State management for getting stuck ---
-        const is_in_irons = abs_wind_angle_rel_boat < MIN_SAILING_ANGLE;
-        const is_slow = this.speed < 1.0;
-
-        if ((is_in_irons && is_slow) || this.state === 'stuck') {
-            if (this.state !== 'stuck') {
-                this.state = 'stuck';
-                this.stuckTimer = 2; // Timer for the get-unstuck maneuver
-            }
-
-            this.stuckTimer -= (1/60); // Assuming 60 FPS, rough delta time
-
-            // Execute get-unstuck maneuver
-            const turn_direction = Math.sign(wind_angle_rel_boat) || 1;
-            this.turn(turn_direction); // Turn hard away from the wind
-            this.sailAngleRel = MAX_SAIL_ANGLE_REL; // Let the sail out completely to catch any wind
-
-            // Exit the stuck state once the timer is up and we are no longer in irons
-            if (this.stuckTimer <= 0 && !is_in_irons) {
-                this.state = 'sailing';
-            }
-            return; // Skip normal sailing logic while stuck
-        }
-
-        // --- Normal sailing logic ---
-        this.state = 'sailing';
+        // Core sailing logic
         const target_x = target_buoy.worldX;
         const target_y = target_buoy.worldY;
-
         const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
-
-        let desired_heading = angle_to_target;
-
-        // Simple upwind avoidance: if target is nearly upwind, aim off to the side.
         const angle_of_target_rel_to_wind = angle_difference(angle_to_target, wind_direction);
-        if (Math.abs(angle_of_target_rel_to_wind) < MIN_SAILING_ANGLE) {
-            const sail_angle = (angle_of_target_rel_to_wind > 0) ? MIN_SAILING_ANGLE : -MIN_SAILING_ANGLE;
-            desired_heading = normalize_angle(wind_direction + sail_angle);
+
+        let desired_heading;
+        const UPWIND_THRESHOLD = MIN_SAILING_ANGLE;
+
+        const isUpwind = Math.abs(angle_of_target_rel_to_wind) < UPWIND_THRESHOLD;
+
+        if (isUpwind) {
+            if (!this.isTacking) {
+                // Start tacking. Choose the initial tack direction.
+                const portTackAngle = normalize_angle(wind_direction + UPWIND_THRESHOLD);
+                const starboardTackAngle = normalize_angle(wind_direction - UPWIND_THRESHOLD);
+                const portDiff = Math.abs(angle_difference(portTackAngle, angle_to_target));
+                const starboardDiff = Math.abs(angle_difference(starboardTackAngle, angle_to_target));
+                this.tackDirection = (portDiff < starboardDiff) ? 1 : -1;
+                this.isTacking = true;
+            }
+
+            // Check if it's time to tack again
+            const current_angle_to_target_rel_wind = angle_difference(angle_to_target, wind_direction);
+            if (this.tackDirection === 1 && current_angle_to_target_rel_wind < 0) {
+                this.tackDirection = -1; // Switch to starboard tack
+            } else if (this.tackDirection === -1 && current_angle_to_target_rel_wind > 0) {
+                this.tackDirection = 1; // Switch to port tack
+            }
+
+            // Set the desired heading based on the current tack.
+            const TACKING_ANGLE = MIN_SAILING_ANGLE + 10; // Sail at a good angle for speed
+            desired_heading = normalize_angle(wind_direction + (TACKING_ANGLE * this.tackDirection));
+
+        } else {
+            // Course is clear, sail directly for the target.
+            this.isTacking = false;
+            desired_heading = angle_to_target;
         }
 
-        // Rudder control
+        // --- Common steering and sail trim logic ---
         const angle_diff = angle_difference(desired_heading, this.heading);
+
+        // Rudder control
         if (angle_diff > 5) {
             this.turn(1);
         } else if (angle_diff < -5) {
@@ -458,7 +457,8 @@ class AIBoat extends Boat {
             this.turn(0);
         }
 
-        // Sail trim logic (always aim for optimal)
+        // Sail trim logic
+        const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
         const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
         this.sailAngleRel = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, optimal_trim));
     }
@@ -845,8 +845,7 @@ function drawMiniMap() {
     const mapSize = 200;
     const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    miniMapCtx.fillStyle = WATER_COLOR;
-    miniMapCtx.fillRect(0, 0, mapSize, mapSize);
+    miniMapCtx.clearRect(0, 0, mapSize, mapSize);
 
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
     const playerY = player1Boat.worldY * worldScale + mapSize / 2;
