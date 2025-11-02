@@ -998,7 +998,7 @@ function gameLoop(timestamp) {
         update(dt);
     } else {
         // Update wave and wind visuals even when not racing
-        waves.forEach(w => w.update());
+        waves.forEach(w => w.update(dt));
         windParticles.forEach(p => p.update());
     }
 
@@ -1195,6 +1195,28 @@ function drawMiniMap() {
     miniMapCtx.fillRect(0, 0, mapSize, mapSize);
     miniMapCtx.strokeRect(0, 0, mapSize, mapSize);
 
+
+    const transformX = (worldX) => (worldX - worldCenterX) * worldScale + mapSize / 2;
+    const transformY = (worldY) => (worldY - worldCenterY) * worldScale + mapSize / 2;
+
+    // Draw Islands
+    islands.forEach(island => {
+        const screenPoints = island.pointsWorld.map(([worldX, worldY]) => [
+            transformX(worldX),
+            transformY(worldY)
+        ]);
+
+        if (screenPoints.length > 2) {
+            miniMapCtx.fillStyle = 'rgba(139, 69, 19, 0.8)'; // SaddleBrown
+            miniMapCtx.beginPath();
+            miniMapCtx.moveTo(screenPoints[0][0], screenPoints[0][1]);
+            for (let i = 1; i < screenPoints.length; i++) {
+                miniMapCtx.lineTo(screenPoints[i][0], screenPoints[i][1]);
+            }
+            miniMapCtx.closePath();
+            miniMapCtx.fill();
+        }
+    });
 
     const transformX = (worldX) => (worldX - worldCenterX) * worldScale + mapSize / 2;
     const transformY = (worldY) => (worldY - worldCenterY) * worldScale + mapSize / 2;
