@@ -398,6 +398,9 @@ class AIBoat extends Boat {
     constructor(x, y, name = "AI", boatColor = "red") {
         super(x, y, name, boatColor);
         this.aggressiveness = Math.random() * 0.5 + 0.5; // Randomness in performance
+        this.isTacking = false;
+        this.tackAngle = 0;
+        this.timeOnTack = 0;
     }
 
     updateControls(target_buoy, wind_direction) {
@@ -406,10 +409,36 @@ class AIBoat extends Boat {
         const target_x = target_buoy.worldX;
         const target_y = target_buoy.worldY;
 
-        const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
+        const angle_to_target_direct = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
+        const wind_angle_to_target = Math.abs(angle_difference(angle_to_target_direct, wind_direction));
+
+        let angle_to_target = angle_to_target_direct;
+
+        if (wind_angle_to_target < MIN_SAILING_ANGLE) {
+            // Target is upwind, so we need to tack
+            if (!this.isTacking) {
+                this.isTacking = true;
+                // Decide which tack to start on (port or starboard)
+                const tack_direction = Math.sign(angle_difference(this.heading, wind_direction)) || 1;
+                this.tackAngle = normalize_angle(wind_direction + MIN_SAILING_ANGLE * tack_direction);
+                this.timeOnTack = 0;
+            }
+            angle_to_target = this.tackAngle;
+
+            // Simple logic to switch tacks: if we are getting further away, or after some time
+            this.timeOnTack += 1/60; // Assuming 60fps
+            const dist_to_target_sq = distance_sq([this.worldX, this.worldY], [target_x, target_y]);
+            if (this.timeOnTack > 5 && Math.abs(angle_difference(angle_to_target_direct, this.heading)) > 90) {
+                 this.isTacking = false; // Force re-evaluation of tack
+            }
+
+        } else {
+            this.isTacking = false;
+        }
+
         const angle_diff = angle_difference(angle_to_target, this.heading);
 
-        // Simple turning logic
+        // Turning logic
         if (angle_diff > 5) {
             this.turn(1);
         } else if (angle_diff < -5) {
@@ -423,12 +452,11 @@ class AIBoat extends Boat {
         const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
 
         if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
-            // If we can sail, set sail to optimal angle
             const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
-            this.sailAngleRel = optimal_trim;
+            this.sailAngleRel = optimal_trim + (Math.random() - 0.5) * 10;
         } else {
-            // If in irons, turn away from the wind to get power
-            this.turn(Math.sign(wind_angle_rel_boat) || 1);
+            this.turn((Math.sign(wind_angle_rel_boat) || 1) * this.aggressiveness);
+            this.sailAngleRel = MAX_SAIL_ANGLE_REL;
         }
     }
 }
