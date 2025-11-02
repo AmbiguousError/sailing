@@ -852,7 +852,7 @@ const keys = {};
 let gameState = 'start'; // 'start', 'countdown', 'racing', 'race-over'
 
 function setup() {
-    document.getElementById('start-screen').style.display = 'block';
+    document.getElementById('start-screen').style.display = 'flex';
     document.getElementById('race-over-screen').style.display = 'none';
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -1262,6 +1262,28 @@ function drawMiniMap() {
         }
     });
 
+    const transformX = (worldX) => (worldX - worldCenterX) * worldScale + mapSize / 2;
+    const transformY = (worldY) => (worldY - worldCenterY) * worldScale + mapSize / 2;
+
+    // Draw Islands
+    islands.forEach(island => {
+        const screenPoints = island.pointsWorld.map(([worldX, worldY]) => [
+            transformX(worldX),
+            transformY(worldY)
+        ]);
+
+        if (screenPoints.length > 2) {
+            miniMapCtx.fillStyle = 'rgba(139, 69, 19, 0.8)'; // SaddleBrown
+            miniMapCtx.beginPath();
+            miniMapCtx.moveTo(screenPoints[0][0], screenPoints[0][1]);
+            for (let i = 1; i < screenPoints.length; i++) {
+                miniMapCtx.lineTo(screenPoints[i][0], screenPoints[i][1]);
+            }
+            miniMapCtx.closePath();
+            miniMapCtx.fill();
+        }
+    });
+
     const playerX = transformX(player1Boat.worldX);
     const playerY = transformY(player1Boat.worldY);
 
@@ -1373,4 +1395,58 @@ window.onload = () => {
     }
 
     requestAnimationFrame(gameLoop);
+
+    document.getElementById('start-button').addEventListener('click', () => {
+        document.getElementById('start-screen').style.display = 'none';
+        gameState = 'countdown';
+        let count = 3;
+        const countdownElement = document.getElementById('countdown');
+        countdownElement.style.display = 'block';
+        countdownElement.textContent = count;
+        const countdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownElement.textContent = count;
+            } else if (count === 0) {
+                countdownElement.textContent = 'Sail!';
+            } else {
+                clearInterval(countdownInterval);
+                countdownElement.style.display = 'none';
+                gameState = 'racing';
+                lastTime = performance.now();
+                player1Boat.raceStartTime = lastTime;
+                aiBoats.forEach(b => b.raceStartTime = lastTime);
+            }
+        }, 1000);
+    });
+
+    document.getElementById('restart-button').addEventListener('click', () => {
+        document.getElementById('race-over-screen').style.display = 'none';
+        setup();
+    });
+
+    window.addEventListener('keydown', (e) => keys[e.key] = true);
+    window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+    const keyMap = {
+        'turn-left': 'ArrowLeft',
+        'turn-right': 'ArrowRight',
+        'trim-up': 'ArrowUp',
+        'trim-down': 'ArrowDown'
+    };
+
+    for (const [id, key] of Object.entries(keyMap)) {
+        const button = document.getElementById(id);
+        button.addEventListener('mousedown', () => keys[key] = true);
+        button.addEventListener('mouseup', () => keys[key] = false);
+        button.addEventListener('mouseleave', () => keys[key] = false);
+        button.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            keys[key] = true;
+        });
+        button.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            keys[key] = false;
+        });
+    }
 };
