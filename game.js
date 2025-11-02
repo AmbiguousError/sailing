@@ -8,7 +8,7 @@ const WORLD_BOUNDS = 2000;
 const BOAT_ACCEL_FACTOR = 0.1;
 const BOAT_TURN_SPEED = 1.5;
 const MAX_BOAT_SPEED = 5.0;
-const SAIL_TRIM_SPEED = 3.0;
+const SAIL_TRIM_SPEED = 6.0;
 const MAX_SAIL_ANGLE_REL = 90;
 const MIN_SAILING_ANGLE = 45;
 const WAKE_LIFETIME = 2.0;
@@ -16,7 +16,7 @@ const MAX_WAKE_PARTICLES = 100;
 const WAKE_SPAWN_INTERVAL = 0.1;
 const BOAT_DRAG = 0.95;
 const MIN_TURN_EFFECTIVENESS = 0.8;
-const SANDBAR_DRAG_MULTIPLIER = 0.8;
+const SANDBAR_DRAG_FACTOR = 2.5;
 const NO_POWER_DECEL = 0.1;
 const BUOY_ROUNDING_RADIUS = 50;
 
@@ -362,7 +362,7 @@ class Boat {
         this.speed += acceleration * dt;
         let dragFactor = (1.0 - BOAT_DRAG);
         if (this.onSandbar) {
-            this.speed *= SANDBAR_DRAG_MULTIPLIER;
+            dragFactor *= SANDBAR_DRAG_FACTOR;
         }
         const dragForce = Math.pow(this.speed, 1.8) * dragFactor;
         this.speed -= dragForce * dt;
@@ -1218,6 +1218,28 @@ function drawMiniMap() {
         }
     });
 
+    const transformX = (worldX) => (worldX - worldCenterX) * worldScale + mapSize / 2;
+    const transformY = (worldY) => (worldY - worldCenterY) * worldScale + mapSize / 2;
+
+    // Draw Islands
+    islands.forEach(island => {
+        const screenPoints = island.pointsWorld.map(([worldX, worldY]) => [
+            transformX(worldX),
+            transformY(worldY)
+        ]);
+
+        if (screenPoints.length > 2) {
+            miniMapCtx.fillStyle = 'rgba(139, 69, 19, 0.8)'; // SaddleBrown
+            miniMapCtx.beginPath();
+            miniMapCtx.moveTo(screenPoints[0][0], screenPoints[0][1]);
+            for (let i = 1; i < screenPoints.length; i++) {
+                miniMapCtx.lineTo(screenPoints[i][0], screenPoints[i][1]);
+            }
+            miniMapCtx.closePath();
+            miniMapCtx.fill();
+        }
+    });
+
     const playerX = transformX(player1Boat.worldX);
     const playerY = transformY(player1Boat.worldY);
 
@@ -1252,8 +1274,8 @@ function drawMiniMap() {
     });
 
     buoys.forEach((b, i) => {
-        const buoyX = b.worldX * worldScale + mapSize / 2;
-        const buoyY = b.worldY * worldScale + mapSize / 2;
+        const buoyX = transformX(b.worldX);
+        const buoyY = transformY(b.worldY);
 
         let color = b.color;
         if (i === player1Boat.nextBuoyIndex) {
