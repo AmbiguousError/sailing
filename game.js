@@ -397,82 +397,70 @@ class Boat {
 class AIBoat extends Boat {
     constructor(x, y, name = "AI", boatColor = "red") {
         super(x, y, name, boatColor);
-        this.aggressiveness = Math.random() * 0.5 + 0.5; // Randomness in performance
-        this.currentTackDirection = null; // null, 1 for port, -1 for starboard
+        this.aggressiveness = Math.random() * 0.5 + 0.5; // Performance variability
+        this.state = 'sailing'; // Initial state: 'sailing', 'stuck', 'avoiding'
+        this.stuckTimer = 0;
     }
 
     updateControls(target_buoy, wind_direction) {
         if (!target_buoy) return;
 
+        const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
+        const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
+
+        // --- State management for getting stuck ---
+        const is_in_irons = abs_wind_angle_rel_boat < MIN_SAILING_ANGLE;
+        const is_slow = this.speed < 1.0;
+
+        if ((is_in_irons && is_slow) || this.state === 'stuck') {
+            if (this.state !== 'stuck') {
+                this.state = 'stuck';
+                this.stuckTimer = 2; // Timer for the get-unstuck maneuver
+            }
+
+            this.stuckTimer -= (1/60); // Assuming 60 FPS, rough delta time
+
+            // Execute get-unstuck maneuver
+            const turn_direction = Math.sign(wind_angle_rel_boat) || 1;
+            this.turn(turn_direction); // Turn hard away from the wind
+            this.sailAngleRel = MAX_SAIL_ANGLE_REL; // Let the sail out completely to catch any wind
+
+            // Exit the stuck state once the timer is up and we are no longer in irons
+            if (this.stuckTimer <= 0 && !is_in_irons) {
+                this.state = 'sailing';
+            }
+            return; // Skip normal sailing logic while stuck
+        }
+
+        // --- Normal sailing logic ---
+        this.state = 'sailing';
         const target_x = target_buoy.worldX;
         const target_y = target_buoy.worldY;
 
         const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
+
+        let desired_heading = angle_to_target;
+
+        // Simple upwind avoidance: if target is nearly upwind, aim off to the side.
         const angle_of_target_rel_to_wind = angle_difference(angle_to_target, wind_direction);
-
-        let desired_heading;
-        // Check if the target is upwind, add a buffer to be safe
-        const is_upwind = Math.abs(angle_of_target_rel_to_wind) < (MIN_SAILING_ANGLE + 5);
-
-        if (is_upwind) {
-            // --- Upwind tacking logic ---
-            const starboard_tack_heading = normalize_angle(wind_direction - MIN_SAILING_ANGLE);
-            const port_tack_heading = normalize_angle(wind_direction + MIN_SAILING_ANGLE);
-
-            // If no tack is set, choose the one that gets us closer to the target initially
-            if (this.currentTackDirection === null) {
-                const starboard_diff = Math.abs(angle_difference(angle_to_target, starboard_tack_heading));
-                const port_diff = Math.abs(angle_difference(angle_to_target, port_tack_heading));
-                this.currentTackDirection = (port_diff < starboard_diff) ? 1 : -1;
-            }
-
-            // Check if it's time to tack back towards the target
-            const angle_from_heading_to_target = angle_difference(angle_to_target, this.heading);
-            const TACK_THRESHOLD = 10;
-
-            // If on starboard tack and we've overshot the target line
-            if (this.currentTackDirection === -1 && angle_from_heading_to_target > TACK_THRESHOLD) {
-                this.currentTackDirection = 1; // Tack to port
-            }
-            // If on port tack and we've overshot the target line
-            else if (this.currentTackDirection === 1 && angle_from_heading_to_target < -TACK_THRESHOLD) {
-                this.currentTackDirection = -1; // Tack to starboard
-            }
-
-            desired_heading = (this.currentTackDirection === 1) ? port_tack_heading : starboard_tack_heading;
-
-        } else {
-            // --- Downwind or reaching logic ---
-            desired_heading = angle_to_target;
-            this.currentTackDirection = null; // Reset tacking state when not sailing upwind
+        if (Math.abs(angle_of_target_rel_to_wind) < MIN_SAILING_ANGLE) {
+            const sail_angle = (angle_of_target_rel_to_wind > 0) ? MIN_SAILING_ANGLE : -MIN_SAILING_ANGLE;
+            desired_heading = normalize_angle(wind_direction + sail_angle);
         }
 
-        // --- Common steering and sail trim logic ---
-        const angle_diff_to_desired = angle_difference(desired_heading, this.heading);
-
         // Rudder control
-        if (angle_diff_to_desired > 5) {
+        const angle_diff = angle_difference(desired_heading, this.heading);
+        if (angle_diff > 5) {
             this.turn(1);
-        } else if (angle_diff_to_desired < -5) {
+        } else if (angle_diff < -5) {
             this.turn(-1);
         } else {
             this.turn(0);
         }
 
-        // Sail trim logic
-        const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
-        const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
-
-        if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
-            // We have power, trim the sails for best speed
-            const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
-            this.sailAngleRel = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, optimal_trim));
-        } else {
-            // Fallback for being in irons: turn away from the wind.
-            // The steering logic above should prevent this, but as a safety net.
-            this.turn(Math.sign(wind_angle_rel_boat) || 1);
-            this.sailAngleRel = MAX_SAIL_ANGLE_REL; // Let sails out
-        }
+        // Sail trim logic (always aim for optimal)
+        const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
+        this.sailAngleRel = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, optimal_trim));
     }
 }
 
@@ -571,6 +559,8 @@ let waves = [];
 let windParticles = [];
 let windSpeed = 10.0;
 let windDirection = 45.0;
+let targetWindDirection = 45.0;
+let targetWindSpeed = 10.0;
 let lastTime = 0;
 let gameRunning = false;
 const keys = {};
@@ -580,6 +570,11 @@ function setup() {
     canvas.height = window.innerHeight;
     waveCanvas.width = window.innerWidth;
     waveCanvas.height = window.innerHeight;
+
+    windDirection = Math.random() * 360;
+    windSpeed = Math.random() * 5 + 5; // Wind speed between 5 and 10
+    targetWindDirection = windDirection;
+    targetWindSpeed = windSpeed;
 
     player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "yellow");
     player1Boat.worldX = 0;
@@ -597,12 +592,10 @@ function setup() {
         sandbars.push(new Sandbar(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 150));
     }
 
-    const numBuoys = 4;
+    const numBuoys = 8;
     for (let i = 0; i < numBuoys; i++) {
-        const angle = (i / numBuoys) * 2 * Math.PI;
-        const distance = Math.random() * 400 + 600; // 600 to 1000 units away
-        const x = Math.cos(angle) * distance;
-        const y = Math.sin(angle) * distance;
+        const x = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
+        const y = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
         const buoy = new Buoy(x, y, i);
         buoys.push(buoy);
     }
@@ -667,7 +660,31 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
+function updateWind(dt) {
+    // Randomly decide to change wind direction and speed
+    if (Math.random() < 0.001) { // Low probability of changing target
+        targetWindDirection = normalize_angle(windDirection + (Math.random() * 60 - 30));
+        targetWindSpeed = Math.random() * 5 + 5;
+    }
+
+    // Slowly interpolate towards the target wind
+    const lerpFactor = 0.001;
+    windDirection = normalize_angle(windDirection + angle_difference(targetWindDirection, windDirection) * lerpFactor);
+    windSpeed += (targetWindSpeed - windSpeed) * lerpFactor;
+
+    // Update particles and waves with new wind data
+    windParticles.forEach(p => {
+        p.windDirection = windDirection;
+        p.windSpeed = windSpeed;
+    });
+    waves.forEach(w => {
+        w.windDirection = windDirection;
+        w.windSpeed = windSpeed;
+    });
+}
+
 function update(dt) {
+    updateWind(dt);
     player1Boat.update(windSpeed, windDirection, dt);
     aiBoats.forEach(aiBoat => {
         aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection);
