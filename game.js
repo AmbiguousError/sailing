@@ -398,6 +398,7 @@ class AIBoat extends Boat {
     constructor(x, y, name = "AI", boatColor = "red") {
         super(x, y, name, boatColor);
         this.aggressiveness = Math.random() * 0.5 + 0.5; // Randomness in performance
+        this.currentTackDirection = null; // null, 1 for port, -1 for starboard
     }
 
     updateControls(target_buoy, wind_direction) {
@@ -407,12 +408,52 @@ class AIBoat extends Boat {
         const target_y = target_buoy.worldY;
 
         const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
-        const angle_diff = angle_difference(angle_to_target, this.heading);
+        const angle_of_target_rel_to_wind = angle_difference(angle_to_target, wind_direction);
 
-        // Simple turning logic
-        if (angle_diff > 5) {
+        let desired_heading;
+        // Check if the target is upwind, add a buffer to be safe
+        const is_upwind = Math.abs(angle_of_target_rel_to_wind) < (MIN_SAILING_ANGLE + 5);
+
+        if (is_upwind) {
+            // --- Upwind tacking logic ---
+            const starboard_tack_heading = normalize_angle(wind_direction - MIN_SAILING_ANGLE);
+            const port_tack_heading = normalize_angle(wind_direction + MIN_SAILING_ANGLE);
+
+            // If no tack is set, choose the one that gets us closer to the target initially
+            if (this.currentTackDirection === null) {
+                const starboard_diff = Math.abs(angle_difference(angle_to_target, starboard_tack_heading));
+                const port_diff = Math.abs(angle_difference(angle_to_target, port_tack_heading));
+                this.currentTackDirection = (port_diff < starboard_diff) ? 1 : -1;
+            }
+
+            // Check if it's time to tack back towards the target
+            const angle_from_heading_to_target = angle_difference(angle_to_target, this.heading);
+            const TACK_THRESHOLD = 10;
+
+            // If on starboard tack and we've overshot the target line
+            if (this.currentTackDirection === -1 && angle_from_heading_to_target > TACK_THRESHOLD) {
+                this.currentTackDirection = 1; // Tack to port
+            }
+            // If on port tack and we've overshot the target line
+            else if (this.currentTackDirection === 1 && angle_from_heading_to_target < -TACK_THRESHOLD) {
+                this.currentTackDirection = -1; // Tack to starboard
+            }
+
+            desired_heading = (this.currentTackDirection === 1) ? port_tack_heading : starboard_tack_heading;
+
+        } else {
+            // --- Downwind or reaching logic ---
+            desired_heading = angle_to_target;
+            this.currentTackDirection = null; // Reset tacking state when not sailing upwind
+        }
+
+        // --- Common steering and sail trim logic ---
+        const angle_diff_to_desired = angle_difference(desired_heading, this.heading);
+
+        // Rudder control
+        if (angle_diff_to_desired > 5) {
             this.turn(1);
-        } else if (angle_diff < -5) {
+        } else if (angle_diff_to_desired < -5) {
             this.turn(-1);
         } else {
             this.turn(0);
@@ -423,13 +464,14 @@ class AIBoat extends Boat {
         const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
 
         if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
-            // If we can sail, set sail to optimal angle
+            // We have power, trim the sails for best speed
             const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
-            this.sailAngleRel = optimal_trim;
+            this.sailAngleRel = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, optimal_trim));
         } else {
-            // If in irons, turn away from the wind to get power
+            // Fallback for being in irons: turn away from the wind.
+            // The steering logic above should prevent this, but as a safety net.
             this.turn(Math.sign(wind_angle_rel_boat) || 1);
-            this.sailAngleRel = MAX_SAIL_ANGLE_REL;
+            this.sailAngleRel = MAX_SAIL_ANGLE_REL; // Let sails out
         }
     }
 }
@@ -651,6 +693,70 @@ function update(dt) {
             }
         }
     });
+
+    // Boat-to-boat collision detection and response
+    const allBoats = [player1Boat, ...aiBoats];
+    for (let i = 0; i < allBoats.length; i++) {
+        for (let j = i + 1; j < allBoats.length; j++) {
+            const boat1 = allBoats[i];
+            const boat2 = allBoats[j];
+            const distSq = distance_sq([boat1.worldX, boat1.worldY], [boat2.worldX, boat2.worldY]);
+            const combinedRadius = boat1.collisionRadius + boat2.collisionRadius;
+
+            if (distSq < combinedRadius * combinedRadius) {
+                const dist = Math.sqrt(distSq);
+                const overlap = combinedRadius - dist;
+
+                // Avoid division by zero if boats are perfectly on top of each other
+                const normalX = dist > 0 ? (boat2.worldX - boat1.worldX) / dist : 1;
+                const normalY = dist > 0 ? (boat2.worldY - boat1.worldY) / dist : 0;
+
+                // 1. Static Resolution: Separate the boats to prevent sticking
+                const separationX = (overlap / 2) * normalX;
+                const separationY = (overlap / 2) * normalY;
+                boat1.worldX -= separationX;
+                boat1.worldY -= separationY;
+                boat2.worldX += separationX;
+                boat2.worldY += separationY;
+
+                // 2. Dynamic Resolution: Calculate and apply impulse
+                // Convert speed and heading to velocity vectors
+                const v1x = Math.cos(deg_to_rad(boat1.heading)) * boat1.speed;
+                const v1y = Math.sin(deg_to_rad(boat1.heading)) * boat1.speed;
+                const v2x = Math.cos(deg_to_rad(boat2.heading)) * boat2.speed;
+                const v2y = Math.sin(deg_to_rad(boat2.heading)) * boat2.speed;
+
+                // Calculate relative velocity
+                const relVx = v2x - v1x;
+                const relVy = v2y - v1y;
+
+                // Calculate velocity along the normal
+                const velAlongNormal = relVx * normalX + relVy * normalY;
+
+                // Do nothing if velocities are separating
+                if (velAlongNormal > 0) continue;
+
+                const restitution = 0.8; // Bounciness
+                let impulse = -(1 + restitution) * velAlongNormal;
+                impulse /= 2; // Assuming equal mass for both boats
+
+                const impulseX = impulse * normalX;
+                const impulseY = impulse * normalY;
+
+                // Apply impulse to velocities
+                const newV1x = v1x - impulseX;
+                const newV1y = v1y - impulseY;
+                const newV2x = v2x + impulseX;
+                const newV2y = v2y + impulseY;
+
+                // Convert back to speed and heading
+                boat1.speed = Math.sqrt(newV1x * newV1x + newV1y * newV1y);
+                boat1.heading = normalize_angle(rad_to_deg(Math.atan2(newV1y, newV1x)));
+                boat2.speed = Math.sqrt(newV2x * newV2x + newV2y * newV2y);
+                boat2.heading = normalize_angle(rad_to_deg(Math.atan2(newV2y, newV2x)));
+            }
+        }
+    }
 }
 
 function render() {
