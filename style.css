@@ -1,0 +1,47 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    background-color: #0077be; /* Ocean blue */
+}
+
+canvas {
+    display: block;
+}
+
+#hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    font-family: sans-serif;
+    background-color: rgba(0,0,0,0.5);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+#controls {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    text-align: center;
+}
+
+#controls button {
+    padding: 15px 30px;
+    font-size: 1.2em;
+    margin: 0 10px;
+    border-radius: 10px;
+    border: none;
+    background-color: #f0f0f0;
+    cursor: pointer;
+}
+
+#minimapContainer {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    border: 2px solid white;
+    border-radius: 5px;
+}
