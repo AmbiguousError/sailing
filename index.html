@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sailing Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+        <div id="speed">Speed: 0.0 knots</div>
+        <div id="wind">Wind: 0.0 knots at 0°</div>
+        <div id="lap">Lap: 1/3</div>
+        <div id="nextBuoy">Next Buoy: 1</div>
+    </div>
+    <div id="controls">
+        <button id="left">Port</button>
+        <button id="right">Starboard</button>
+    </div>
+    <div id="minimapContainer">
+        <canvas id="minimapCanvas"></canvas>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
