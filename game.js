@@ -207,6 +207,7 @@ class Boat {
         this.raceStartTime = 0.0;
         this.finishTime = 0.0;
         this.lapTimes = [];
+        this.passedBuoys = new Set();
     }
 
     resetPosition() {
@@ -514,18 +515,17 @@ class Buoy {
         this.index = index;
         this.radius = 10;
         this.isGate = isGate;
-        this.isPassed = false;
         this.color = isGate ? START_FINISH_BUOY_COLOR : NEXT_BUOY_INDICATOR_COLOR;
     }
 
-    draw(ctx, offsetX, offsetY, isNext, viewCenter) {
+    draw(ctx, offsetX, offsetY, isNext, isPassed, viewCenter) {
         const screenX = this.worldX - offsetX + viewCenter[0];
         const screenY = this.worldY - offsetY + viewCenter[1];
 
         let color = this.color;
         if (isNext) {
             color = 'green';
-        } else if (this.isPassed) {
+        } else if (isPassed) {
             color = 'red';
         }
 
@@ -705,7 +705,7 @@ function update(dt) {
             const nextBuoy = buoys[boat.nextBuoyIndex];
             const distSq = distance_sq([boat.worldX, boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
             if (distSq < BUOY_ROUNDING_RADIUS * BUOY_ROUNDING_RADIUS) {
-                nextBuoy.isPassed = true;
+                boat.passedBuoys.add(boat.nextBuoyIndex);
                 boat.nextBuoyIndex++;
                 if (boat.nextBuoyIndex === buoys.length) {
                     boat.currentLap++;
@@ -715,7 +715,7 @@ function update(dt) {
                         raceFinishedElement.style.display = 'block';
                     }
                     boat.nextBuoyIndex = 0;
-                    buoys.forEach(b => b.isPassed = false);
+                    boat.passedBuoys.clear();
                 }
             }
         }
@@ -829,7 +829,8 @@ function render() {
 
     buoys.forEach((b, i) => {
         const isNext = i === player1Boat.nextBuoyIndex;
-        b.draw(ctx, worldOffsetX, worldOffsetY, isNext, viewCenter);
+        const isPassed = player1Boat.passedBuoys.has(i);
+        b.draw(ctx, worldOffsetX, worldOffsetY, isNext, isPassed, viewCenter);
     });
 
     player1Boat.screenX = viewCenter[0];
@@ -928,7 +929,7 @@ function drawMiniMap() {
         let color = b.color;
         if (i === player1Boat.nextBuoyIndex) {
             color = 'green';
-        } else if (b.isPassed) {
+        } else if (player1Boat.passedBuoys.has(i)) {
             color = 'red';
         }
 
@@ -942,6 +943,31 @@ function drawMiniMap() {
 
 const startMenu = document.getElementById('start-menu');
 const startRaceButton = document.getElementById('start-race');
+const restartRaceButton = document.getElementById('restart-race');
+
+function resetGame() {
+    gameRunning = false;
+
+    // Clear all game object arrays
+    aiBoats = [];
+    sandbars = [];
+    buoys = [];
+    waves = [];
+    windParticles = [];
+
+    // Reset game state
+    raceState = 'pre-race';
+
+    // Reset UI elements
+    raceFinishedElement.style.display = 'none';
+    startMenu.style.display = 'block';
+    countdownElement.style.display = 'none';
+
+    // Clear canvases to prevent showing the old frame
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    miniMapCtx.clearRect(0, 0, miniMap.width, miniMap.height);
+}
 
 function startGame() {
     startMenu.style.display = 'none';
@@ -965,7 +991,13 @@ function startGame() {
     }, 1000);
 }
 
+function restartGame() {
+    resetGame();
+    setup(); // Re-initialize game objects and settings
+}
+
 window.onload = () => {
     setup();
     startRaceButton.addEventListener('click', startGame);
+    restartRaceButton.addEventListener('click', restartGame);
 };
