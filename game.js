@@ -545,11 +545,14 @@ const ctx = canvas.getContext('2d');
 const waveCanvas = document.getElementById('waveCanvas');
 const waveCtx = waveCanvas.getContext('2d');
 const windArrow = document.getElementById('wind-arrow');
-const optimalSailAngleElement = document.getElementById('optimal-sail-angle');
+const buoyIndicator = document.getElementById('buoy-indicator');
 const speedReading = document.getElementById('speed-reading');
 const lapsElement = document.getElementById('laps');
 const miniMap = document.getElementById('mini-map');
 const miniMapCtx = miniMap.getContext('2d');
+const countdownElement = document.getElementById('countdown');
+const raceFinishedElement = document.getElementById('race-finished');
+
 
 let player1Boat;
 let aiBoats = [];
@@ -564,6 +567,8 @@ let targetWindSpeed = 10.0;
 let lastTime = 0;
 let gameRunning = false;
 const keys = {};
+let raceState = 'pre-race'; // 'pre-race', 'countdown', 'running', 'finished'
+const MAX_LAPS = 3;
 
 function setup() {
     canvas.width = window.innerWidth;
@@ -684,6 +689,7 @@ function updateWind(dt) {
 }
 
 function update(dt) {
+    if (raceState !== 'running') return;
     updateWind(dt);
     player1Boat.update(windSpeed, windDirection, dt);
     aiBoats.forEach(aiBoat => {
@@ -695,7 +701,7 @@ function update(dt) {
 
     // Buoy collision
     [player1Boat, ...aiBoats].forEach(boat => {
-        if (!boat) return;
+        if (!boat || raceState !== 'running') return;
         if (boat.nextBuoyIndex < buoys.length) {
             const nextBuoy = buoys[boat.nextBuoyIndex];
             const distSq = distance_sq([boat.worldX, boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
@@ -704,6 +710,11 @@ function update(dt) {
                 boat.nextBuoyIndex++;
                 if (boat.nextBuoyIndex === buoys.length) {
                     boat.currentLap++;
+                    if (boat === player1Boat && boat.currentLap > MAX_LAPS) {
+                        raceState = 'finished';
+                        gameRunning = false;
+                        raceFinishedElement.style.display = 'block';
+                    }
                     boat.nextBuoyIndex = 0;
                     buoys.forEach(b => b.isPassed = false);
                 }
@@ -753,7 +764,7 @@ function update(dt) {
                 // Do nothing if velocities are separating
                 if (velAlongNormal > 0) continue;
 
-                const restitution = 0.8; // Bounciness
+                const restitution = 1.2; // Bounciness
                 let impulse = -(1 + restitution) * velAlongNormal;
                 impulse /= 2; // Assuming equal mass for both boats
 
@@ -804,7 +815,11 @@ function render() {
 
     // Update HUD
     windArrow.style.transform = `rotate(${windDirection}deg)`;
-    optimalSailAngleElement.style.transform = `rotate(${player1Boat.optimalSailTrim + player1Boat.heading}deg)`;
+    if (raceState === 'running' && player1Boat.nextBuoyIndex < buoys.length) {
+        const nextBuoy = buoys[player1Boat.nextBuoyIndex];
+        const angleToBuoy = normalize_angle(rad_to_deg(Math.atan2(nextBuoy.worldY - player1Boat.worldY, nextBuoy.worldX - player1Boat.worldX)));
+        buoyIndicator.style.transform = `rotate(${angleToBuoy}deg)`;
+    }
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
     lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
 
@@ -904,9 +919,24 @@ const startRaceButton = document.getElementById('start-race');
 
 function startGame() {
     startMenu.style.display = 'none';
-    lastTime = performance.now();
-    gameRunning = true;
-    requestAnimationFrame(gameLoop);
+    raceState = 'countdown';
+    let countdown = 3;
+    countdownElement.style.display = 'block';
+    countdownElement.textContent = countdown;
+
+    const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+            countdownElement.textContent = countdown;
+        } else {
+            clearInterval(countdownInterval);
+            countdownElement.style.display = 'none';
+            raceState = 'running';
+            lastTime = performance.now();
+            gameRunning = true;
+            requestAnimationFrame(gameLoop);
+        }
+    }, 1000);
 }
 
 window.onload = () => {
