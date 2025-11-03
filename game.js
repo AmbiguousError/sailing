@@ -545,7 +545,6 @@ const ctx = canvas.getContext('2d');
 const waveCanvas = document.getElementById('waveCanvas');
 const waveCtx = waveCanvas.getContext('2d');
 const windArrow = document.getElementById('wind-arrow');
-const buoyIndicator = document.getElementById('buoy-indicator');
 const speedReading = document.getElementById('speed-reading');
 const lapsElement = document.getElementById('laps');
 const miniMap = document.getElementById('mini-map');
@@ -787,6 +786,36 @@ function update(dt) {
     }
 }
 
+function drawBuoyArrow(ctx) {
+    if (raceState !== 'running' || player1Boat.nextBuoyIndex >= buoys.length) return;
+
+    const nextBuoy = buoys[player1Boat.nextBuoyIndex];
+    const angleToBuoy = Math.atan2(nextBuoy.worldY - player1Boat.worldY, nextBuoy.worldX - player1Boat.worldX);
+
+    const boatScreenX = player1Boat.screenX;
+    const boatScreenY = player1Boat.screenY;
+
+    const arrowDistance = 60; // Distance from the boat's center
+    const arrowLength = 15;
+    const arrowWidth = 10;
+
+    // Position the arrow at a fixed distance from the boat, in the direction of the buoy
+    const arrowX = boatScreenX + Math.cos(angleToBuoy) * arrowDistance;
+    const arrowY = boatScreenY + Math.sin(angleToBuoy) * arrowDistance;
+
+    ctx.save();
+    ctx.translate(arrowX, arrowY);
+    ctx.rotate(angleToBuoy);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.beginPath();
+    ctx.moveTo(arrowLength, 0);
+    ctx.lineTo(-arrowLength, -arrowWidth);
+    ctx.lineTo(-arrowLength, arrowWidth);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -807,6 +836,8 @@ function render() {
     player1Boat.screenY = viewCenter[1];
     player1Boat.draw(ctx);
 
+    drawBuoyArrow(ctx);
+
     aiBoats.forEach(aiBoat => {
         aiBoat.screenX = aiBoat.worldX - worldOffsetX + viewCenter[0];
         aiBoat.screenY = aiBoat.worldY - worldOffsetY + viewCenter[1];
@@ -815,11 +846,6 @@ function render() {
 
     // Update HUD
     windArrow.style.transform = `rotate(${windDirection}deg)`;
-    if (raceState === 'running' && player1Boat.nextBuoyIndex < buoys.length) {
-        const nextBuoy = buoys[player1Boat.nextBuoyIndex];
-        const angleToBuoy = normalize_angle(rad_to_deg(Math.atan2(nextBuoy.worldY - player1Boat.worldY, nextBuoy.worldX - player1Boat.worldX)));
-        buoyIndicator.style.transform = `rotate(${angleToBuoy}deg)`;
-    }
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
     lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
 
