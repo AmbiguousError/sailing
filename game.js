@@ -580,13 +580,15 @@ function setup() {
     targetWindDirection = windDirection;
     targetWindSpeed = windSpeed;
 
-    player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "yellow");
+    player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "#FFD700"); // Gold
     player1Boat.worldX = 0;
     player1Boat.worldY = 0;
 
+    const aiColors = ["#FF6347", "#4682B4", "#32CD32"]; // Tomato, SteelBlue, LimeGreen
+
     const numOpponents = 3;
     for (let i = 0; i < numOpponents; i++) {
-        const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, `hsl(${Math.random() * 360}, 100%, 75%)`);
+        const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, aiColors[i % aiColors.length]);
         aiBoat.worldX = -50 * (i + 1);
         aiBoat.worldY = -50 * (i + 1);
         aiBoats.push(aiBoat);
