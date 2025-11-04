@@ -412,6 +412,10 @@ class AIBoat extends Boat {
 
     updateControls(target_buoy, wind_direction) {
         if (!target_buoy) return;
+        if (this.tackTimer > 0) {
+            this.tackTimer--;
+            return;
+        }
 
         const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_buoy.worldY - this.worldY, target_buoy.worldX - this.worldX)));
         const wind_angle_to_target = Math.abs(angle_difference(angle_to_target, wind_direction));
