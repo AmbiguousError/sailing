@@ -5,7 +5,9 @@ def run():
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto('http://localhost:8000')
-        page.screenshot(path='jules-scratch/verification/start_screen.png')
+        page.click('#single-race-btn')
+        page.wait_for_timeout(1000) # Wait for the game to start
+        page.screenshot(path='jules-scratch/verification/in_game.png')
         browser.close()
 
 run()
