@@ -56,11 +56,12 @@
         <button id="start-series">Start Series (3 Races)</button>
     </div>
     <div id="countdown" style="display: none;"></div>
-    <div id="race-finished" style="display: none;">
-        <div id="race-results">
-            <h2>Race Finished!</h2>
+    <div id="race-finished" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2 id="race-finished-title">Race Finished!</h2>
+            <div id="race-results"></div>
+            <button id="restart-race">Restart Race</button>
         </div>
-        <button id="restart-race">Restart Race</button>
     </div>
     <script src="game.js"></script>
 </body>

@@ -921,7 +921,9 @@ function drawMiniMap() {
     const mapSize = 200;
     const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    miniMapCtx.clearRect(0, 0, mapSize, mapSize);
+    miniMapCtx.fillStyle = 'rgba(170, 221, 222, 0.5)';
+    miniMapCtx.fillRect(0, 0, mapSize, mapSize);
+
 
     const playerX = player1Boat.worldX * worldScale + mapSize / 2;
     const playerY = player1Boat.worldY * worldScale + mapSize / 2;
@@ -1012,48 +1014,66 @@ function startGame() {
 
 function displayRaceResults() {
     const resultsContainer = document.getElementById('race-results');
+    const titleElement = document.getElementById('race-finished-title');
+    resultsContainer.innerHTML = ''; // Clear previous results
+
+    const allBoats = [player1Boat, ...aiBoats];
+    allBoats.sort((a, b) => {
+        if (a.isFinished && !b.isFinished) return -1;
+        if (!a.isFinished && b.isFinished) return 1;
+        if (a.isFinished && b.isFinished) return a.finishTime - b.finishTime;
+        return 0; // Keep original order for unfinished boats
+    });
+
+    let resultsHTML = '<table id="results-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Time</th><th>Lap Times</th>';
+    if (isSeries) {
+        resultsHTML += '<th>Points</th>';
+    }
+    resultsHTML += '</tr></thead><tbody>';
+
+    const points = [10, 6, 4, 0];
+    allBoats.forEach((boat, index) => {
+        const rank = index + 1;
+        const time = boat.isFinished ? ((boat.finishTime - boat.raceStartTime) / 1000).toFixed(2) + 's' : 'DNF';
+        const lapTimesStr = boat.lapTimes.map(t => t.toFixed(2)).join(', ');
+        resultsHTML += `<tr><td>${rank}</td><td>${boat.name}</td><td>${time}</td><td>${lapTimesStr}</td>`;
+        if (isSeries) {
+            const racePoints = boat.isFinished ? (points[index] || 0) : 0;
+            if (boat.name in seriesScores) {
+                 seriesScores[boat.name] += racePoints;
+            } else {
+                 seriesScores[boat.name] = racePoints;
+            }
+            resultsHTML += `<td>${racePoints}</td>`;
+        }
+        resultsHTML += '</tr>';
+    });
+    resultsHTML += '</tbody></table>';
+    resultsContainer.innerHTML = resultsHTML;
 
     if (isSeries) {
-        resultsContainer.innerHTML = `<h2>Race ${currentRace} of ${seriesLength} Finished!</h2>`;
-        const allBoats = [player1Boat, ...aiBoats];
-        allBoats.sort((a, b) => {
-            if (a.isFinished && !b.isFinished) return -1;
-            if (!a.isFinished && b.isFinished) return 1;
-            if (a.isFinished && b.isFinished) return a.finishTime - b.finishTime;
-            return 0; // Keep original order for unfinished boats
-        });
+        titleElement.textContent = `Race ${currentRace} of ${seriesLength} Results`;
 
-        const points = [10, 6, 4, 0];
-        allBoats.forEach((boat, index) => {
-            if (boat.isFinished) {
-                const racePoints = points[index] || 0;
-                seriesScores[boat.name] = (seriesScores[boat.name] || 0) + racePoints;
-                resultsContainer.innerHTML += `<p>${boat.name}: ${racePoints} points</p>`;
-            }
-        });
-
-        resultsContainer.innerHTML += '<h3>Series Standings</h3>';
+        let seriesStandingsHTML = '<h3>Series Standings</h3><table id="series-standings-table" class="results-table"><thead><tr><th>Rank</th><th>Name</th><th>Score</th></tr></thead><tbody>';
         const sortedScores = Object.entries(seriesScores).sort(([, a], [, b]) => b - a);
-        for (const [name, score] of sortedScores) {
-            resultsContainer.innerHTML += `<p>${name}: ${score}</p>`;
-        }
+        sortedScores.forEach(([name, score], index) => {
+            seriesStandingsHTML += `<tr><td>${index + 1}</td><td>${name}</td><td>${score}</td></tr>`;
+        });
+        seriesStandingsHTML += '</tbody></table>';
+        resultsContainer.innerHTML += seriesStandingsHTML;
 
         if (currentRace >= seriesLength) {
-            resultsContainer.innerHTML += '<h2>Series Finished!</h2>';
+            titleElement.textContent = 'Final Series Results';
             document.getElementById('restart-race').textContent = 'Main Menu';
         } else {
             document.getElementById('restart-race').textContent = 'Next Race';
         }
+
     } else {
-        resultsContainer.innerHTML = '<h2>Race Finished!</h2>';
-        const totalTime = (player1Boat.finishTime - player1Boat.raceStartTime) / 1000;
-        resultsContainer.innerHTML += `<p>Total Time: ${totalTime.toFixed(2)}s</p>`;
-        player1Boat.lapTimes.forEach((lapTime, index) => {
-            resultsContainer.innerHTML += `<p>Lap ${index + 1}: ${lapTime.toFixed(2)}s</p>`;
-        });
+        titleElement.textContent = 'Race Finished!';
     }
 
-    raceFinishedElement.style.display = 'block';
+    raceFinishedElement.style.display = 'flex';
 }
 
 function restartGame() {
