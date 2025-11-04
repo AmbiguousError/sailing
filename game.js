@@ -715,12 +715,11 @@ function setup() {
     }
 
     // Event Listeners
-    singleRaceBtn.addEventListener('click', () => startGame('singleRace'));
-    raceSeriesBtn.addEventListener('click', () => startGame('raceSeries'));
-    freeSailBtn.addEventListener('click', () => startGame('freeSail'));
-    playAgainButton.addEventListener('click', resetGame);
-
     if (!window.listenersAdded) {
+        singleRaceBtn.addEventListener('click', () => startGame('singleRace'));
+        raceSeriesBtn.addEventListener('click', () => startGame('raceSeries'));
+        freeSailBtn.addEventListener('click', () => startGame('freeSail'));
+        playAgainButton.addEventListener('click', resetGame);
         window.addEventListener('keydown', (e) => keys[e.key] = true);
         window.addEventListener('keyup', (e) => keys[e.key] = false);
 
