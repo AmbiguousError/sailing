@@ -417,19 +417,34 @@ class AIBoat extends Boat {
             return;
         }
 
-        const target_x = target_buoy.worldX;
-        const target_y = target_buoy.worldY;
+        const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_buoy.worldY - this.worldY, target_buoy.worldX - this.worldX)));
+        const wind_angle_to_target = Math.abs(angle_difference(angle_to_target, wind_direction));
 
-        const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
-        const angle_diff = angle_difference(angle_to_target, this.heading);
+        if (wind_angle_to_target < MIN_SAILING_ANGLE && this.tackTimer <= 0) {
+            this.currentTack = Math.sign(angle_difference(this.heading, wind_direction)) || 1;
+            this.tackTimer = (Math.random() * 100) + 100;
+        }
 
-        // Simple turning logic
-        if (angle_diff > 5) {
-            this.turn(1);
-        } else if (angle_diff < -5) {
-            this.turn(-1);
+        if (this.tackTimer > 0) {
+            const tack_angle_modifier = MIN_SAILING_ANGLE * this.currentTack;
+            const tack_heading = normalize_angle(wind_direction + tack_angle_modifier);
+            const angle_diff = angle_difference(tack_heading, this.heading);
+
+            if (Math.abs(angle_diff) > 5) {
+                this.turn(Math.sign(angle_diff));
+            } else {
+                this.turn(0);
+            }
+            this.tackTimer--;
         } else {
-            this.turn(0);
+            const angle_diff = angle_difference(angle_to_target, this.heading);
+            if (angle_diff > 5) {
+                this.turn(1);
+            } else if (angle_diff < -5) {
+                this.turn(-1);
+            } else {
+                this.turn(0);
+            }
         }
 
         // Sail trim logic
@@ -437,13 +452,11 @@ class AIBoat extends Boat {
         const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
 
         if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
-            // If we can sail, set sail to optimal angle
             const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
             this.sailAngleRel = optimal_trim;
         } else {
-            // If in irons, turn away from the wind to get power and start tack
             this.turn(Math.sign(wind_angle_rel_boat) || 1);
-            this.tackTimer = 60; // frames to continue turning
+            this.tackTimer = 60;
         }
     }
 }
@@ -770,7 +783,53 @@ function gameLoop(timestamp) {
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
+function handle_boat_collisions(allBoats) {
+    for (let i = 0; i < allBoats.length; i++) {
+        for (let j = i + 1; j < allBoats.length; j++) {
+            const boat1 = allBoats[i];
+            const boat2 = allBoats[j];
+
+            const distSq = distance_sq([boat1.worldX, boat1.worldY], [boat2.worldX, boat2.worldY]);
+            const min_dist = boat1.collisionRadius + boat2.collisionRadius;
+
+            if (distSq < min_dist * min_dist) {
+                const distance = Math.sqrt(distSq);
+                const overlap = min_dist - distance;
+
+                const dx = boat2.worldX - boat1.worldX;
+                const dy = boat2.worldY - boat1.worldY;
+
+                if (distance === 0) {
+                    boat1.worldX += (Math.random() - 0.5) * 0.1;
+                    boat1.worldY += (Math.random() - 0.5) * 0.1;
+                    continue;
+                }
+
+                const nx = dx / distance;
+                const ny = dy / distance;
+
+                boat1.worldX -= nx * overlap / 2;
+                boat1.worldY -= ny * overlap / 2;
+                boat2.worldX += nx * overlap / 2;
+                boat2.worldY += ny * overlap / 2;
+
+                const impulse = 0.5;
+                boat1.speed *= 0.9;
+                boat2.speed *= 0.9;
+
+                boat1.worldX -= nx * impulse;
+                boat1.worldY -= ny * impulse;
+                boat2.worldX += nx * impulse;
+                boat2.worldY += ny * impulse;
+            }
+        }
+    }
+}
+
 function update(dt) {
+    // Cap dt to prevent physics explosions from browser tab inactivity
+    dt = Math.min(dt, 0.1);
+
     [player1Boat, ...aiBoats].forEach(boat => {
         if (!boat.isFinished) {
             boat.update(windSpeed, windDirection, dt);
@@ -787,6 +846,9 @@ function update(dt) {
 
     waves.forEach(w => w.update());
     windParticles.forEach(p => p.update());
+
+    // Handle boat collisions
+    handle_boat_collisions([player1Boat, ...aiBoats]);
 
     // Buoy collision and lap counting
     if (gameMode !== 'freeSail') {
@@ -848,6 +910,23 @@ function render() {
     player1Boat.screenX = viewCenter[0];
     player1Boat.screenY = viewCenter[1];
     player1Boat.draw(ctx);
+
+    if (gameMode !== 'freeSail' && player1Boat.nextBuoyIndex < buoys.length) {
+        const nextBuoy = buoys[player1Boat.nextBuoyIndex];
+        const angleToBuoy = Math.atan2(nextBuoy.worldY - player1Boat.worldY, nextBuoy.worldX - player1Boat.worldX);
+
+        ctx.save();
+        ctx.translate(player1Boat.screenX, player1Boat.screenY);
+        ctx.rotate(angleToBuoy);
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
+        ctx.beginPath();
+        ctx.moveTo(30, 0);
+        ctx.lineTo(50, -10);
+        ctx.lineTo(50, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
 
     aiBoats.forEach(aiBoat => {
         aiBoat.screenX = aiBoat.worldX - worldOffsetX + viewCenter[0];
