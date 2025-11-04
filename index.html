@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="start-screen">
+        <h1>Dinghy Sailing Race</h1>
+        <div class="instructions">
+            <h2>Welcome, Sailor!</h2>
+            <p>Compete against AI opponents in a challenging race around the buoys.</p>
+            <h3>Controls:</h3>
+            <ul>
+                <li><strong>Up/Down Arrows:</strong> Trim your sail</li>
+                <li><strong>Left/Right Arrows:</strong> Steer your boat</li>
+            </ul>
+            <p>Pay attention to the wind indicator to find the optimal sail angle for maximum speed. Good luck!</p>
+        </div>
+        <button id="start-button">Start Race</button>
+    </div>
     <canvas id="waveCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
     <div id="hud">
@@ -31,6 +45,11 @@
             <button id="trim-up">▲</button>
             <button id="trim-down">▼</button>
         </div>
+    </div>
+    <div id="results-screen" style="display: none;">
+        <h1>Race Results</h1>
+        <ul id="results-list"></ul>
+        <button id="play-again-btn">Play Again</button>
     </div>
     <script src="game.js"></script>
 </body>

@@ -13,11 +13,11 @@ canvas {
 
 #gameCanvas {
     background-color: transparent;
-    z-index: 1;
+    z-index: -1;
 }
 
 #waveCanvas {
-    z-index: 0;
+    z-index: -2;
 }
 
 #hud {
@@ -26,6 +26,10 @@ canvas {
     right: 20px;
     color: #333333;
     z-index: 2;
+}
+
+.hidden {
+    display: none;
 }
 
 #wind-indicator {
