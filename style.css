@@ -28,8 +28,8 @@ canvas {
     z-index: 2;
 }
 
-.hidden {
-    display: none;
+#start-screen.hidden, #results-screen.hidden {
+    display: none !important;
 }
 
 #wind-indicator {
