@@ -407,13 +407,27 @@ class AIBoat extends Boat {
         this.aggressiveness = Math.random() * 0.5 + 0.75; // Performance variability
         this.isTacking = false;
         this.tackDirection = 1; // 1 for port (right of wind), -1 for starboard (left of wind)
+        this.roamTarget = null;
     }
 
     updateControls(target_buoy, wind_direction) {
-        if (!target_buoy) return;
+        let target_x, target_y;
+
+        if (raceState === 'free-sail') {
+            if (!this.roamTarget || distance_sq([this.worldX, this.worldY], this.roamTarget) < 10000) { // 100 units
+                this.roamTarget = [
+                    Math.random() * WORLD_BOUNDS - WORLD_BOUNDS / 2,
+                    Math.random() * WORLD_BOUNDS - WORLD_BOUNDS / 2
+                ];
+            }
+            [target_x, target_y] = this.roamTarget;
+        } else {
+            if (!target_buoy) return;
+            target_x = target_buoy.worldX;
+            target_y = target_buoy.worldY;
+        }
 
         // Core sailing logic
-        const target_x = target_buoy.worldX;
         const target_y = target_buoy.worldY;
         const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_y - this.worldY, target_x - this.worldX)));
         const angle_of_target_rel_to_wind = angle_difference(angle_to_target, wind_direction);
@@ -573,7 +587,7 @@ let targetWindSpeed = 10.0;
 let lastTime = 0;
 let gameRunning = false;
 const keys = {};
-let raceState = 'pre-race'; // 'pre-race', 'countdown', 'running', 'finished'
+let raceState = 'pre-race'; // 'pre-race', 'countdown', 'running', 'finished', 'free-sail'
 let maxLaps = 3;
 
 let isSeries = false;
@@ -598,7 +612,7 @@ function setup() {
 
     const aiColors = ["#FF6347", "#4682B4", "#32CD32"]; // Tomato, SteelBlue, LimeGreen
 
-    const numOpponents = 3;
+    const numOpponents = parseInt(document.getElementById('ai-boats-select').value);
     for (let i = 0; i < numOpponents; i++) {
         const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, aiColors[i % aiColors.length]);
         aiBoat.worldX = -50 * (i + 1);
@@ -615,12 +629,14 @@ function setup() {
         sandbars.push(new Sandbar(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 150));
     }
 
-    const numBuoys = parseInt(document.getElementById('buoys-select').value);
-    for (let i = 0; i < numBuoys; i++) {
-        const x = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
-        const y = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
-        const buoy = new Buoy(x, y, i);
-        buoys.push(buoy);
+    if (raceState !== 'free-sail') {
+        const numBuoys = parseInt(document.getElementById('buoys-select').value);
+        for (let i = 0; i < numBuoys; i++) {
+            const x = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
+            const y = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
+            const buoy = new Buoy(x, y, i);
+            buoys.push(buoy);
+        }
     }
 
     for (let i = 0; i < 20; i++) {
@@ -707,10 +723,11 @@ function updateWind(dt) {
 }
 
 function update(dt) {
-    if (raceState !== 'running') return;
+    if (raceState !== 'running' && raceState !== 'free-sail') return;
     updateWind(dt);
 
-    const currentTime = performance.now();
+    if (raceState === 'running') {
+        const currentTime = performance.now();
     const elapsedTime = (currentTime - player1Boat.raceStartTime) / 1000;
     const minutes = Math.floor(elapsedTime / 60);
     const seconds = Math.floor(elapsedTime % 60);
@@ -725,10 +742,11 @@ function update(dt) {
     windParticles.forEach(p => p.update());
 
     // Buoy collision
-    [player1Boat, ...aiBoats].forEach(boat => {
-        if (!boat || raceState !== 'running' || boat.isFinished) return;
-        if (boat.nextBuoyIndex < buoys.length) {
-            const nextBuoy = buoys[boat.nextBuoyIndex];
+    if (raceState === 'running') {
+        [player1Boat, ...aiBoats].forEach(boat => {
+            if (!boat || boat.isFinished) return;
+            if (boat.nextBuoyIndex < buoys.length) {
+                const nextBuoy = buoys[boat.nextBuoyIndex];
             const distSq = distance_sq([boat.worldX, boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
             if (distSq < BUOY_ROUNDING_RADIUS * BUOY_ROUNDING_RADIUS) {
                 boat.passedBuoys.add(boat.nextBuoyIndex);
@@ -752,8 +770,8 @@ function update(dt) {
                     }
                 }
             }
-        }
-    });
+        });
+    }
 
     // Boat-to-boat collision detection and response
     const allBoats = [player1Boat, ...aiBoats];
@@ -821,7 +839,7 @@ function update(dt) {
 }
 
 function drawBuoyArrow(ctx) {
-    if (raceState !== 'running' || player1Boat.nextBuoyIndex >= buoys.length) return;
+    if (raceState !== 'running' || player1Boat.nextBuoyIndex >= buoys.length || raceState === 'free-sail') return;
 
     const nextBuoy = buoys[player1Boat.nextBuoyIndex];
     const angleToBuoy = Math.atan2(nextBuoy.worldY - player1Boat.worldY, nextBuoy.worldX - player1Boat.worldX);
@@ -882,7 +900,14 @@ function render() {
     // Update HUD
     windArrow.style.transform = `rotate(${windDirection}deg)`;
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
-    lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
+    if (raceState === 'free-sail') {
+        lapsElement.style.display = 'none';
+        raceTimerElement.style.display = 'none';
+    } else {
+        lapsElement.style.display = 'block';
+        raceTimerElement.style.display = 'block';
+        lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
+    }
 
     drawMiniMap();
 }
@@ -1110,6 +1135,14 @@ function resetGame() {
     miniMapCtx.clearRect(0, 0, miniMap.width, miniMap.height);
 }
 
+function startFreeSail() {
+    startMenu.style.display = 'none';
+    raceState = 'free-sail';
+    lastTime = performance.now();
+    gameRunning = true;
+    requestAnimationFrame(gameLoop);
+}
+
 window.onload = () => {
     setup();
     startRaceButton.addEventListener('click', () => {
@@ -1122,5 +1155,16 @@ window.onload = () => {
         seriesScores = {};
         startGame();
     });
+    document.getElementById('start-free-sail').addEventListener('click', () => {
+        isSeries = false;
+        startFreeSail();
+    });
     restartRaceButton.addEventListener('click', restartGame);
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && raceState === 'free-sail') {
+            resetGame();
+            setup();
+        }
+    });
 };

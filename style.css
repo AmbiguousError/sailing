@@ -132,7 +132,7 @@ canvas {
     border: 1px solid #ccc;
 }
 
-#start-race {
+#start-race, #start-series, #start-free-sail {
     padding: 15px 30px;
     font-size: 1.5em;
     cursor: pointer;
