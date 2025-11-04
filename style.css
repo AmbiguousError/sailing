@@ -102,20 +102,48 @@ canvas {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.7);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 10;
+    color: white;
+    font-family: Arial, sans-serif;
 }
 
-#start-race {
-    padding: 20px 40px;
-    font-size: 24px;
+@media (max-width: 600px) {
+    #start-menu {
+        flex-direction: column;
+    }
+}
+
+.menu-item {
+    margin: 10px 0;
+}
+
+.menu-item label {
+    font-size: 1.2em;
+}
+
+.menu-item select, .menu-item input {
+    font-size: 1em;
+    padding: 5px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+#start-race, #start-series, #start-free-sail {
+    padding: 15px 30px;
+    font-size: 1.5em;
     cursor: pointer;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin-top: 20px;
 }
 
-#countdown, #race-finished {
+#countdown {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -124,4 +152,60 @@ canvas {
     color: white;
     text-shadow: 2px 2px 4px #000000;
     z-index: 11;
+}
+
+.modal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+.modal-content {
+    background-color: #f0f8ff;
+    padding: 30px;
+    border-radius: 15px;
+    text-align: center;
+    max-width: 90%;
+    width: 500px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    color: #333;
+}
+
+#results-table {
+    width: 100%;
+    margin-top: 20px;
+    border-collapse: collapse;
+}
+
+#results-table th, #results-table td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+#results-table th {
+    background-color: #e6f2ff;
+}
+
+.modal-content h2 {
+    margin-top: 0;
+}
+
+.modal-content button {
+    padding: 10px 20px;
+    font-size: 1.2em;
+    cursor: pointer;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin-top: 20px;
 }
