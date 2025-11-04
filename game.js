@@ -19,6 +19,8 @@ const SANDBAR_DRAG_MULTIPLIER = 0.8;
 const NO_POWER_DECEL = 0.1;
 const BUOY_ROUNDING_RADIUS = 50;
 const MAX_LAPS = 3;
+const AI_FOLLOW_DISTANCE_CLOSE = 80;
+const AI_FOLLOW_DISTANCE_MATCH_HEADING = 150;
 
 const WHITE = '#FFFFFF';
 const BLACK = '#333333';
@@ -430,41 +432,41 @@ class AIBoat extends Boat {
             const tack_heading = normalize_angle(wind_direction + tack_angle_modifier);
             const angle_diff = angle_difference(tack_heading, this.heading);
 
-            if (Math.abs(angle_diff) > 5) {
-                this.turn(Math.sign(angle_diff));
-            } else {
-                this.turn(0);
-            }
+            if (Math.abs(angle_diff) > 5) this.turn(Math.sign(angle_diff));
+            else this.turn(0);
             this.tackTimer -= dt;
         } else {
             const distSq = distance_sq([this.worldX, this.worldY], [target.worldX, target.worldY]);
             let final_target_angle = angle_to_target;
+            let should_slow_down = false;
 
-            // If the target is a boat and we are close, try to match its heading
-            if (target instanceof Boat && distSq < 100 * 100) { // 100 pixels
-                final_target_angle = target.heading;
+            if (target instanceof Boat) {
+                if (distSq < AI_FOLLOW_DISTANCE_CLOSE * AI_FOLLOW_DISTANCE_CLOSE) {
+                    should_slow_down = true;
+                    final_target_angle = this.heading;
+                } else if (distSq < AI_FOLLOW_DISTANCE_MATCH_HEADING * AI_FOLLOW_DISTANCE_MATCH_HEADING) {
+                    final_target_angle = target.heading;
+                }
             }
 
             const angle_diff = angle_difference(final_target_angle, this.heading);
-            if (angle_diff > 5) {
-                this.turn(1);
-            } else if (angle_diff < -5) {
-                this.turn(-1);
+            if (angle_diff > 5) this.turn(1);
+            else if (angle_diff < -5) this.turn(-1);
+            else this.turn(0);
+
+            if (should_slow_down) {
+                this.sailAngleRel = angle_difference(wind_direction, this.heading);
             } else {
-                this.turn(0);
+                const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
+                const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
+
+                if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
+                    this.sailAngleRel = angle_difference(wind_angle_rel_boat + 180, 90);
+                } else {
+                    this.turn(Math.sign(wind_angle_rel_boat) || 1);
+                    this.tackTimer = 1;
+                }
             }
-        }
-
-        // Sail trim logic
-        const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
-        const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
-
-        if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
-            const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
-            this.sailAngleRel = optimal_trim;
-        } else {
-            this.turn(Math.sign(wind_angle_rel_boat) || 1);
-            this.tackTimer = 1; // Short tack to get out of irons
         }
     }
 }
