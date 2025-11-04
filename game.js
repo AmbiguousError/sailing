@@ -979,30 +979,6 @@ const startMenu = document.getElementById('start-menu');
 const startRaceButton = document.getElementById('start-race');
 const restartRaceButton = document.getElementById('restart-race');
 
-function resetGame() {
-    gameRunning = false;
-
-    // Clear all game object arrays
-    aiBoats = [];
-    sandbars = [];
-    buoys = [];
-    waves = [];
-    windParticles = [];
-
-    // Reset game state
-    raceState = 'pre-race';
-
-    // Reset UI elements
-    raceFinishedElement.style.display = 'none';
-    startMenu.style.display = 'block';
-    countdownElement.style.display = 'none';
-
-    // Clear canvases to prevent showing the old frame
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
-    miniMapCtx.clearRect(0, 0, miniMap.width, miniMap.height);
-}
-
 function startGame() {
     if (isSeries) {
         currentRace++;
