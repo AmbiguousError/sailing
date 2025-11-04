@@ -240,6 +240,9 @@ class Boat {
     }
 
     update(windSpeed, windDirection, dt) {
+        if (dt <= 0 || isNaN(dt)) {
+            return;
+        }
         this.prevWorldX = this.worldX;
         this.prevWorldY = this.worldY;
 
@@ -410,19 +413,15 @@ class AIBoat extends Boat {
         this.tackTimer = 0;
     }
 
-    updateControls(target_buoy, wind_direction) {
+    updateControls(target_buoy, wind_direction, dt) {
         if (!target_buoy) return;
-        if (this.tackTimer > 0) {
-            this.tackTimer--;
-            return;
-        }
 
         const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_buoy.worldY - this.worldY, target_buoy.worldX - this.worldX)));
         const wind_angle_to_target = Math.abs(angle_difference(angle_to_target, wind_direction));
 
         if (wind_angle_to_target < MIN_SAILING_ANGLE && this.tackTimer <= 0) {
             this.currentTack = Math.sign(angle_difference(this.heading, wind_direction)) || 1;
-            this.tackTimer = (Math.random() * 100) + 100;
+            this.tackTimer = Math.random() * 2 + 2; // Tack for 2-4 seconds
         }
 
         if (this.tackTimer > 0) {
@@ -435,7 +434,7 @@ class AIBoat extends Boat {
             } else {
                 this.turn(0);
             }
-            this.tackTimer--;
+            this.tackTimer -= dt;
         } else {
             const angle_diff = angle_difference(angle_to_target, this.heading);
             if (angle_diff > 5) {
@@ -456,7 +455,7 @@ class AIBoat extends Boat {
             this.sailAngleRel = optimal_trim;
         } else {
             this.turn(Math.sign(wind_angle_rel_boat) || 1);
-            this.tackTimer = 60;
+            this.tackTimer = 1; // Short tack to get out of irons
         }
     }
 }
@@ -839,7 +838,7 @@ function update(dt) {
     if (gameMode !== 'freeSail') {
         aiBoats.forEach(aiBoat => {
             if (!aiBoat.isFinished) {
-                aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection);
+                aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection, dt);
             }
         });
     }
@@ -918,13 +917,17 @@ function render() {
         ctx.save();
         ctx.translate(player1Boat.screenX, player1Boat.screenY);
         ctx.rotate(angleToBuoy);
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
+
+        // More subtle, arrow shape, and further away
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.5)'; // More transparent
         ctx.beginPath();
-        ctx.moveTo(30, 0);
-        ctx.lineTo(50, -10);
-        ctx.lineTo(50, 10);
+        ctx.moveTo(50, 0); // Start further away
+        ctx.lineTo(70, -10);
+        ctx.lineTo(65, 0);
+        ctx.lineTo(70, 10);
         ctx.closePath();
         ctx.fill();
+
         ctx.restore();
     }
 
