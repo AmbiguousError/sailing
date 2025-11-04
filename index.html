@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="start-screen">
+        <h1>Dinghy Sailing Race</h1>
+        <div class="instructions">
+            <h2>Welcome, Sailor!</h2>
+            <p>Compete against AI opponents in a challenging race around the buoys.</p>
+            <h3>Controls:</h3>
+            <ul>
+                <li><strong>Up/Down Arrows:</strong> Trim your sail</li>
+                <li><strong>Left/Right Arrows:</strong> Steer your boat</li>
+            </ul>
+            <p>Pay attention to the wind indicator to find the optimal sail angle for maximum speed. Good luck!</p>
+        </div>
+        <button id="start-button">Start Race</button>
+    </div>
     <canvas id="waveCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
     <div id="hud">
@@ -30,43 +44,10 @@
             <button id="trim-down">▼</button>
         </div>
     </div>
-    <div id="start-menu">
-        <h1>Dinghy Sailing Race</h1>
-        <div class="menu-item">
-            <label for="laps-select">Laps:</label>
-            <select id="laps-select">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3" selected>3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-            </select>
-        </div>
-        <div class="menu-item">
-            <label for="buoys-select">Buoys:</label>
-            <select id="buoys-select">
-                <option value="4">4</option>
-                <option value="6">6</option>
-                <option value="8" selected>8</option>
-                <option value="10">10</option>
-                <option value="12">12</option>
-            </select>
-        </div>
-        <div class="menu-item">
-            <label for="ai-boats-select">AI Boats:</label>
-            <input type="number" id="ai-boats-select" value="3" min="0" max="10">
-        </div>
-        <button id="start-race">Start Race</button>
-        <button id="start-series">Start Series (3 Races)</button>
-        <button id="start-free-sail">Free Sail</button>
-    </div>
-    <div id="countdown" style="display: none;"></div>
-    <div id="race-finished" class="modal" style="display: none;">
-        <div class="modal-content">
-            <h2 id="race-finished-title">Race Finished!</h2>
-            <div id="race-results"></div>
-            <button id="restart-race">Restart Race</button>
-        </div>
+    <div id="results-screen" style="display: none;">
+        <h1>Race Results</h1>
+        <ul id="results-list"></ul>
+        <button id="play-again-btn">Play Again</button>
     </div>
     <script src="game.js"></script>
 </body>

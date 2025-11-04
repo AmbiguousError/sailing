@@ -18,6 +18,7 @@ const MIN_TURN_EFFECTIVENESS = 0.8;
 const SANDBAR_DRAG_MULTIPLIER = 0.8;
 const NO_POWER_DECEL = 0.1;
 const BUOY_ROUNDING_RADIUS = 50;
+const MAX_LAPS = 3;
 
 const WHITE = '#FFFFFF';
 const BLACK = '#333333';
@@ -210,7 +211,7 @@ class Boat {
         this.passedBuoys = new Set();
     }
 
-    resetPosition() {
+    reset() {
         this.worldX = 0.0;
         this.worldY = 0.0;
         this.prevWorldX = 0.0;
@@ -220,6 +221,14 @@ class Boat {
         this.sailAngleRel = 0.0;
         this.visualSailAngleRel = 0.0;
         this.wakeParticles = [];
+        this.raceStarted = false;
+        this.isFinished = false;
+        this.currentLap = 1;
+        this.nextBuoyIndex = 0;
+        this.lapStartTime = 0.0;
+        this.raceStartTime = 0.0;
+        this.finishTime = 0.0;
+        this.lapTimes = [];
     }
 
     trimSail(direction) {
@@ -404,27 +413,15 @@ class Boat {
 class AIBoat extends Boat {
     constructor(x, y, name = "AI", boatColor = "red") {
         super(x, y, name, boatColor);
-        this.aggressiveness = Math.random() * 0.5 + 0.75; // Performance variability
-        this.isTacking = false;
-        this.tackDirection = 1; // 1 for port (right of wind), -1 for starboard (left of wind)
-        this.roamTarget = null;
+        this.aggressiveness = Math.random() * 0.5 + 0.5; // Randomness in performance
+        this.tackTimer = 0;
     }
 
     updateControls(target_buoy, wind_direction) {
-        let target_x, target_y;
-
-        if (raceState === 'free-sail') {
-            if (!this.roamTarget || distance_sq([this.worldX, this.worldY], this.roamTarget) < 10000) { // 100 units
-                this.roamTarget = [
-                    Math.random() * WORLD_BOUNDS - WORLD_BOUNDS / 2,
-                    Math.random() * WORLD_BOUNDS - WORLD_BOUNDS / 2
-                ];
-            }
-            [target_x, target_y] = this.roamTarget;
-        } else {
-            if (!target_buoy) return;
-            target_x = target_buoy.worldX;
-            target_y = target_buoy.worldY;
+        if (!target_buoy) return;
+        if (this.tackTimer > 0) {
+            this.tackTimer--;
+            return;
         }
 
         // Core sailing logic
@@ -480,8 +477,17 @@ class AIBoat extends Boat {
 
         // Sail trim logic
         const wind_angle_rel_boat = angle_difference(wind_direction, this.heading);
-        const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
-        this.sailAngleRel = Math.max(-MAX_SAIL_ANGLE_REL, Math.min(MAX_SAIL_ANGLE_REL, optimal_trim));
+        const abs_wind_angle_rel_boat = Math.abs(wind_angle_rel_boat);
+
+        if (abs_wind_angle_rel_boat > MIN_SAILING_ANGLE) {
+            // If we can sail, set sail to optimal angle
+            const optimal_trim = angle_difference(wind_angle_rel_boat + 180, 90);
+            this.sailAngleRel = optimal_trim;
+        } else {
+            // If in irons, turn away from the wind to get power and start tack
+            this.turn(Math.sign(wind_angle_rel_boat) || 1);
+            this.tackTimer = 60; // frames to continue turning
+        }
     }
 }
 
@@ -559,11 +565,17 @@ class Buoy {
 }
 
 
-// Game Loop
+// Game Elements
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const waveCanvas = document.getElementById('waveCanvas');
 const waveCtx = waveCanvas.getContext('2d');
+const hud = document.getElementById('hud');
+const startScreen = document.getElementById('start-screen');
+const resultsScreen = document.getElementById('results-screen');
+const startButton = document.getElementById('start-button');
+const playAgainButton = document.getElementById('play-again-btn');
+const resultsList = document.getElementById('results-list');
 const windArrow = document.getElementById('wind-arrow');
 const speedReading = document.getElementById('speed-reading');
 const lapsElement = document.getElementById('laps');
@@ -587,13 +599,56 @@ let targetWindSpeed = 10.0;
 let lastTime = 0;
 let gameRunning = false;
 const keys = {};
-let raceState = 'pre-race'; // 'pre-race', 'countdown', 'running', 'finished', 'free-sail'
-let maxLaps = 3;
+let gameState = 'start'; // 'start', 'racing', 'results'
+let animationFrameId;
 
-let isSeries = false;
-let currentRace = 0;
-const seriesLength = 3;
-let seriesScores = {};
+function setGameState(newState) {
+    gameState = newState;
+    switch (gameState) {
+        case 'start':
+            startScreen.classList.remove('hidden');
+            hud.classList.add('hidden');
+            resultsScreen.classList.add('hidden');
+            break;
+        case 'racing':
+            startScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+            resultsScreen.classList.add('hidden');
+            break;
+        case 'results':
+            startScreen.classList.add('hidden');
+            hud.classList.add('hidden');
+            resultsScreen.classList.remove('hidden');
+            break;
+    }
+}
+
+function startGame() {
+    [player1Boat, ...aiBoats].forEach(boat => boat.raceStarted = true);
+    setGameState('racing');
+    lastTime = performance.now();
+    gameLoop(lastTime);
+}
+
+function resetGame() {
+    setup();
+    setGameState('start');
+}
+
+function showResults() {
+    const allBoats = [player1Boat, ...aiBoats];
+    allBoats.sort((a, b) => a.finishTime - b.finishTime);
+    resultsList.innerHTML = '';
+    allBoats.forEach(boat => {
+        const li = document.createElement('li');
+        li.textContent = `${boat.name}: ${boat.isFinished ? (boat.finishTime / 1000).toFixed(2) + 's' : 'DNF'}`;
+        resultsList.appendChild(li);
+    });
+    setGameState('results');
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
+}
 
 function setup() {
     canvas.width = window.innerWidth;
@@ -601,18 +656,15 @@ function setup() {
     waveCanvas.width = window.innerWidth;
     waveCanvas.height = window.innerHeight;
 
-    windDirection = Math.random() * 360;
-    windSpeed = Math.random() * 5 + 5; // Wind speed between 5 and 10
-    targetWindDirection = windDirection;
-    targetWindSpeed = windSpeed;
-
-    player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "#FFD700"); // Gold
+    if (!player1Boat) {
+        player1Boat = new Boat(canvas.width / 2, canvas.height / 2, "Player 1", "#87CEEB");
+    }
+    player1Boat.reset();
     player1Boat.worldX = 0;
     player1Boat.worldY = 0;
 
-    const aiColors = ["#FF6347", "#4682B4", "#32CD32"]; // Tomato, SteelBlue, LimeGreen
-
-    const numOpponents = parseInt(document.getElementById('ai-boats-select').value);
+    aiBoats = [];
+    const numOpponents = 3;
     for (let i = 0; i < numOpponents; i++) {
         const aiBoat = new AIBoat(canvas.width / 2, canvas.height / 2, `AI ${i + 1}`, aiColors[i % aiColors.length]);
         aiBoat.worldX = -50 * (i + 1);
@@ -620,57 +672,64 @@ function setup() {
         aiBoats.push(aiBoat);
     }
 
-    if (isSeries && currentRace === 0) {
-        seriesScores[player1Boat.name] = 0;
-        aiBoats.forEach(b => seriesScores[b.name] = 0);
-    }
-
+    sandbars = [];
     for (let i = 0; i < 10; i++) {
         sandbars.push(new Sandbar(Math.random() * 2000 - 1000, Math.random() * 2000 - 1000, 150));
     }
 
-    if (raceState !== 'free-sail') {
-        const numBuoys = parseInt(document.getElementById('buoys-select').value);
-        for (let i = 0; i < numBuoys; i++) {
-            const x = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
-            const y = Math.random() * (WORLD_BOUNDS - 200) - (WORLD_BOUNDS / 2 - 100);
-            const buoy = new Buoy(x, y, i);
-            buoys.push(buoy);
-        }
+    buoys = [];
+    const numBuoys = 6;
+    for (let i = 0; i < numBuoys; i++) {
+        const angle = (i / numBuoys) * 2 * Math.PI + Math.random() * 0.2 - 0.1;
+        const distance = Math.random() * 400 + 600; // 600 to 1000 units away
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+        const buoy = new Buoy(x, y, i);
+        buoys.push(buoy);
     }
 
+    windDirection = Math.random() * 360;
+
+    waves = [];
     for (let i = 0; i < 20; i++) {
         waves.push(new Wave(windDirection, windSpeed));
     }
 
+    windParticles = [];
     for (let i = 0; i < 50; i++) {
         windParticles.push(new WindParticle(windDirection, windSpeed));
     }
 
     // Event Listeners
-    window.addEventListener('keydown', (e) => keys[e.key] = true);
-    window.addEventListener('keyup', (e) => keys[e.key] = false);
+    if (!window.listenersAdded) {
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
 
-    const keyMap = {
-        'turn-left': 'ArrowLeft',
-        'turn-right': 'ArrowRight',
-        'trim-up': 'ArrowUp',
-        'trim-down': 'ArrowDown'
-    };
+        startButton.addEventListener('click', startGame);
+        playAgainButton.addEventListener('click', resetGame);
 
-    for (const [id, key] of Object.entries(keyMap)) {
-        const button = document.getElementById(id);
-        button.addEventListener('mousedown', () => keys[key] = true);
-        button.addEventListener('mouseup', () => keys[key] = false);
-        button.addEventListener('mouseleave', () => keys[key] = false);
-        button.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            keys[key] = true;
-        });
-        button.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            keys[key] = false;
-        });
+        const keyMap = {
+            'turn-left': 'ArrowLeft',
+            'turn-right': 'ArrowRight',
+            'trim-up': 'ArrowUp',
+            'trim-down': 'ArrowDown'
+        };
+
+        for (const [id, key] of Object.entries(keyMap)) {
+            const button = document.getElementById(id);
+            button.addEventListener('mousedown', () => keys[key] = true);
+            button.addEventListener('mouseup', () => keys[key] = false);
+            button.addEventListener('mouseleave', () => keys[key] = false);
+            button.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                keys[key] = true;
+            });
+            button.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                keys[key] = false;
+            });
+        }
+        window.listenersAdded = true;
     }
 }
 
@@ -684,9 +743,9 @@ function handleInput() {
 }
 
 function gameLoop(timestamp) {
-    if (!gameRunning) return;
+    if (gameState !== 'racing') return;
 
-    let dt = (timestamp - lastTime) / 1000.0;
+    const dt = (timestamp - lastTime) / 1000.0;
     lastTime = timestamp;
 
     // Cap dt to prevent physics glitches on tab change
@@ -696,7 +755,7 @@ function gameLoop(timestamp) {
     update(dt);
     render();
 
-    requestAnimationFrame(gameLoop);
+    animationFrameId = requestAnimationFrame(gameLoop);
 }
 
 function updateWind(dt) {
@@ -723,50 +782,48 @@ function updateWind(dt) {
 }
 
 function update(dt) {
-    if (raceState !== 'running' && raceState !== 'free-sail') return;
-    updateWind(dt);
-
-    if (raceState === 'running') {
-        const currentTime = performance.now();
-    const elapsedTime = (currentTime - player1Boat.raceStartTime) / 1000;
-    const minutes = Math.floor(elapsedTime / 60);
-    const seconds = Math.floor(elapsedTime % 60);
-    raceTimerElement.textContent = `Time: ${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-    player1Boat.update(windSpeed, windDirection, dt);
-    aiBoats.forEach(aiBoat => {
-        aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection);
-        aiBoat.update(windSpeed, windDirection, dt);
+    [player1Boat, ...aiBoats].forEach(boat => {
+        if (!boat.isFinished) {
+            boat.update(windSpeed, windDirection, dt);
+        }
     });
+
+    aiBoats.forEach(aiBoat => {
+        if (!aiBoat.isFinished) {
+            aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection);
+        }
+    });
+
     waves.forEach(w => w.update());
     windParticles.forEach(p => p.update());
 
-    // Buoy collision
-    if (raceState === 'running') {
-        [player1Boat, ...aiBoats].forEach(boat => {
-            if (!boat || boat.isFinished) return;
-            if (boat.nextBuoyIndex < buoys.length) {
-                const nextBuoy = buoys[boat.nextBuoyIndex];
+    // Buoy collision and lap counting
+    [player1Boat, ...aiBoats].forEach(boat => {
+        if (!boat || boat.isFinished) return;
+
+        if (boat.raceStarted && boat.raceStartTime === 0.0) {
+            boat.raceStartTime = performance.now();
+            boat.lapStartTime = performance.now();
+        }
+
+        if (boat.nextBuoyIndex < buoys.length) {
+            const nextBuoy = buoys[boat.nextBuoyIndex];
             const distSq = distance_sq([boat.worldX, boat.worldY], [nextBuoy.worldX, nextBuoy.worldY]);
             if (distSq < BUOY_ROUNDING_RADIUS * BUOY_ROUNDING_RADIUS) {
                 boat.passedBuoys.add(boat.nextBuoyIndex);
                 boat.nextBuoyIndex++;
                 if (boat.nextBuoyIndex === buoys.length) {
-                    const lapTime = (performance.now() - boat.lapStartTime) / 1000;
-                    boat.lapTimes.push(lapTime);
-                    boat.lapStartTime = performance.now();
-                    boat.currentLap++;
-                    if (boat.currentLap > maxLaps) {
+                    const now = performance.now();
+                    boat.lapTimes.push(now - boat.lapStartTime);
+                    boat.lapStartTime = now;
+
+                    if (boat.currentLap >= MAX_LAPS) {
                         boat.isFinished = true;
-                        boat.finishTime = performance.now();
-                        if (boat === player1Boat) {
-                            raceState = 'finished';
-                            gameRunning = false;
-                            displayRaceResults();
-                        }
+                        boat.finishTime = now - boat.raceStartTime;
                     } else {
+                        boat.currentLap++;
                         boat.nextBuoyIndex = 0;
-                        boat.passedBuoys.clear();
+                        buoys.forEach(b => b.isPassed = false); // Reset for player, could be specific
                     }
                 }
             }
@@ -835,37 +892,12 @@ function update(dt) {
                 boat2.heading = normalize_angle(rad_to_deg(Math.atan2(newV2y, newV2x)));
             }
         }
+    });
+
+    // Check if race is over
+    if (player1Boat.isFinished) {
+        showResults();
     }
-}
-
-function drawBuoyArrow(ctx) {
-    if (raceState !== 'running' || player1Boat.nextBuoyIndex >= buoys.length || raceState === 'free-sail') return;
-
-    const nextBuoy = buoys[player1Boat.nextBuoyIndex];
-    const angleToBuoy = Math.atan2(nextBuoy.worldY - player1Boat.worldY, nextBuoy.worldX - player1Boat.worldX);
-
-    const boatScreenX = player1Boat.screenX;
-    const boatScreenY = player1Boat.screenY;
-
-    const arrowDistance = 60; // Distance from the boat's center
-    const arrowLength = 15;
-    const arrowWidth = 10;
-
-    // Position the arrow at a fixed distance from the boat, in the direction of the buoy
-    const arrowX = boatScreenX + Math.cos(angleToBuoy) * arrowDistance;
-    const arrowY = boatScreenY + Math.sin(angleToBuoy) * arrowDistance;
-
-    ctx.save();
-    ctx.translate(arrowX, arrowY);
-    ctx.rotate(angleToBuoy);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.beginPath();
-    ctx.moveTo(arrowLength, 0);
-    ctx.lineTo(-arrowLength, -arrowWidth);
-    ctx.lineTo(-arrowLength, arrowWidth);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
 }
 
 function render() {
@@ -900,14 +932,7 @@ function render() {
     // Update HUD
     windArrow.style.transform = `rotate(${windDirection}deg)`;
     speedReading.textContent = `Speed: ${player1Boat.speed.toFixed(1)}`;
-    if (raceState === 'free-sail') {
-        lapsElement.style.display = 'none';
-        raceTimerElement.style.display = 'none';
-    } else {
-        lapsElement.style.display = 'block';
-        raceTimerElement.style.display = 'block';
-        lapsElement.textContent = `Lap: ${player1Boat.currentLap}`;
-    }
+    lapsElement.textContent = `Lap: ${player1Boat.currentLap}/${MAX_LAPS}`;
 
     drawMiniMap();
 }
@@ -946,7 +971,7 @@ function drawMiniMap() {
     const mapSize = 200;
     const worldScale = mapSize / (WORLD_BOUNDS * 2);
 
-    miniMapCtx.fillStyle = 'rgba(170, 221, 222, 0.5)';
+    miniMapCtx.fillStyle = 'rgba(170, 221, 222, 0.7)'; // Translucent water color
     miniMapCtx.fillRect(0, 0, mapSize, mapSize);
 
 
@@ -1002,169 +1027,7 @@ function drawMiniMap() {
 }
 
 
-const startMenu = document.getElementById('start-menu');
-const startRaceButton = document.getElementById('start-race');
-const restartRaceButton = document.getElementById('restart-race');
-
-function startGame() {
-    if (isSeries) {
-        currentRace++;
-    }
-    maxLaps = parseInt(document.getElementById('laps-select').value);
-    startMenu.style.display = 'none';
-    raceState = 'countdown';
-    let countdown = 3;
-    countdownElement.style.display = 'block';
-    countdownElement.textContent = countdown;
-
-    const countdownInterval = setInterval(() => {
-        countdown--;
-        if (countdown > 0) {
-            countdownElement.textContent = countdown;
-        } else {
-            clearInterval(countdownInterval);
-            countdownElement.style.display = 'none';
-            raceState = 'running';
-            const startTime = performance.now();
-            [player1Boat, ...aiBoats].forEach(boat => {
-                boat.raceStartTime = startTime;
-                boat.lapStartTime = startTime;
-            });
-            lastTime = startTime;
-            gameRunning = true;
-            requestAnimationFrame(gameLoop);
-        }
-    }, 1000);
-}
-
-function displayRaceResults() {
-    const resultsContainer = document.getElementById('race-results');
-    const titleElement = document.getElementById('race-finished-title');
-    resultsContainer.innerHTML = ''; // Clear previous results
-
-    const allBoats = [player1Boat, ...aiBoats];
-    allBoats.sort((a, b) => {
-        if (a.isFinished && !b.isFinished) return -1;
-        if (!a.isFinished && b.isFinished) return 1;
-        if (a.isFinished && b.isFinished) return a.finishTime - b.finishTime;
-        return 0; // Keep original order for unfinished boats
-    });
-
-    let resultsHTML = '<table id="results-table"><thead><tr><th>Rank</th><th>Name</th><th>Total Time</th><th>Lap Times</th>';
-    if (isSeries) {
-        resultsHTML += '<th>Points</th>';
-    }
-    resultsHTML += '</tr></thead><tbody>';
-
-    const points = [10, 6, 4, 0];
-    allBoats.forEach((boat, index) => {
-        const rank = index + 1;
-        const time = boat.isFinished ? ((boat.finishTime - boat.raceStartTime) / 1000).toFixed(2) + 's' : 'DNF';
-        const lapTimesStr = boat.lapTimes.map(t => t.toFixed(2)).join(', ');
-        resultsHTML += `<tr><td>${rank}</td><td>${boat.name}</td><td>${time}</td><td>${lapTimesStr}</td>`;
-        if (isSeries) {
-            const racePoints = boat.isFinished ? (points[index] || 0) : 0;
-            if (boat.name in seriesScores) {
-                 seriesScores[boat.name] += racePoints;
-            } else {
-                 seriesScores[boat.name] = racePoints;
-            }
-            resultsHTML += `<td>${racePoints}</td>`;
-        }
-        resultsHTML += '</tr>';
-    });
-    resultsHTML += '</tbody></table>';
-    resultsContainer.innerHTML = resultsHTML;
-
-    if (isSeries) {
-        titleElement.textContent = `Race ${currentRace} of ${seriesLength} Results`;
-
-        let seriesStandingsHTML = '<h3>Series Standings</h3><table id="series-standings-table" class="results-table"><thead><tr><th>Rank</th><th>Name</th><th>Score</th></tr></thead><tbody>';
-        const sortedScores = Object.entries(seriesScores).sort(([, a], [, b]) => b - a);
-        sortedScores.forEach(([name, score], index) => {
-            seriesStandingsHTML += `<tr><td>${index + 1}</td><td>${name}</td><td>${score}</td></tr>`;
-        });
-        seriesStandingsHTML += '</tbody></table>';
-        resultsContainer.innerHTML += seriesStandingsHTML;
-
-        if (currentRace >= seriesLength) {
-            titleElement.textContent = 'Final Series Results';
-            document.getElementById('restart-race').textContent = 'Main Menu';
-        } else {
-            document.getElementById('restart-race').textContent = 'Next Race';
-        }
-
-    } else {
-        titleElement.textContent = 'Race Finished!';
-    }
-
-    raceFinishedElement.style.display = 'flex';
-}
-
-function restartGame() {
-    if (isSeries && currentRace >= seriesLength) {
-        isSeries = false;
-        currentRace = 0;
-        seriesScores = {};
-        document.getElementById('restart-race').textContent = 'Restart Race';
-        resetGame();
-        setup();
-    } else if (isSeries) {
-        resetGame();
-        setup();
-        startGame();
-    } else {
-        resetGame();
-        setup();
-    }
-}
-
-function resetGame() {
-    gameRunning = false;
-    aiBoats = [];
-    sandbars = [];
-    buoys = [];
-    waves = [];
-    windParticles = [];
-    raceState = 'pre-race';
-    raceFinishedElement.style.display = 'none';
-    startMenu.style.display = 'block';
-    countdownElement.style.display = 'none';
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
-    miniMapCtx.clearRect(0, 0, miniMap.width, miniMap.height);
-}
-
-function startFreeSail() {
-    startMenu.style.display = 'none';
-    raceState = 'free-sail';
-    lastTime = performance.now();
-    gameRunning = true;
-    requestAnimationFrame(gameLoop);
-}
-
 window.onload = () => {
     setup();
-    startRaceButton.addEventListener('click', () => {
-        isSeries = false;
-        startGame();
-    });
-    document.getElementById('start-series').addEventListener('click', () => {
-        isSeries = true;
-        currentRace = 0;
-        seriesScores = {};
-        startGame();
-    });
-    document.getElementById('start-free-sail').addEventListener('click', () => {
-        isSeries = false;
-        startFreeSail();
-    });
-    restartRaceButton.addEventListener('click', restartGame);
-
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && raceState === 'free-sail') {
-            resetGame();
-            setup();
-        }
-    });
+    setGameState('start');
 };
