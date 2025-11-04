@@ -109,10 +109,11 @@ class Wave {
         this.width = Math.random() * 2 + 1;
     }
 
-    update() {
+    update(dt) {
+        if (isNaN(dt)) dt = 0.016;
         const rad = deg_to_rad(this.windDirection);
-        this.x += Math.cos(rad) * this.speed;
-        this.y += Math.sin(rad) * this.speed;
+        this.x += Math.cos(rad) * this.speed * (dt * 60); // Normalize speed to 60fps
+        this.y += Math.sin(rad) * this.speed * (dt * 60);
 
         if (this.x > window.innerWidth) this.x = 0;
         if (this.x < 0) this.x = window.innerWidth;
@@ -413,10 +414,10 @@ class AIBoat extends Boat {
         this.tackTimer = 0;
     }
 
-    updateControls(target_buoy, wind_direction, dt) {
-        if (!target_buoy) return;
+    updateControls(target, wind_direction, dt) {
+        if (!target) return;
 
-        const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target_buoy.worldY - this.worldY, target_buoy.worldX - this.worldX)));
+        const angle_to_target = normalize_angle(rad_to_deg(Math.atan2(target.worldY - this.worldY, target.worldX - this.worldX)));
         const wind_angle_to_target = Math.abs(angle_difference(angle_to_target, wind_direction));
 
         if (wind_angle_to_target < MIN_SAILING_ANGLE && this.tackTimer <= 0) {
@@ -436,7 +437,15 @@ class AIBoat extends Boat {
             }
             this.tackTimer -= dt;
         } else {
-            const angle_diff = angle_difference(angle_to_target, this.heading);
+            const distSq = distance_sq([this.worldX, this.worldY], [target.worldX, target.worldY]);
+            let final_target_angle = angle_to_target;
+
+            // If the target is a boat and we are close, try to match its heading
+            if (target instanceof Boat && distSq < 100 * 100) { // 100 pixels
+                final_target_angle = target.heading;
+            }
+
+            const angle_diff = angle_difference(final_target_angle, this.heading);
             if (angle_diff > 5) {
                 this.turn(1);
             } else if (angle_diff < -5) {
@@ -835,7 +844,13 @@ function update(dt) {
         }
     });
 
-    if (gameMode !== 'freeSail') {
+    if (gameMode === 'freeSail') {
+        aiBoats.forEach(aiBoat => {
+            if (!aiBoat.isFinished) {
+                aiBoat.updateControls(player1Boat, windDirection, dt);
+            }
+        });
+    } else {
         aiBoats.forEach(aiBoat => {
             if (!aiBoat.isFinished) {
                 aiBoat.updateControls(buoys[aiBoat.nextBuoyIndex], windDirection, dt);
@@ -843,7 +858,7 @@ function update(dt) {
         });
     }
 
-    waves.forEach(w => w.update());
+    waves.forEach(w => w.update(dt));
     windParticles.forEach(p => p.update());
 
     // Handle boat collisions
