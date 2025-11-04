@@ -17,6 +17,7 @@
         </div>
         <div id="speed-reading">Speed: 0.0</div>
         <div id="laps">Lap: 1</div>
+        <div id="race-timer">Time: 0:00</div>
     </div>
     <canvas id="mini-map"></canvas>
     <div id="touch-controls">
@@ -30,12 +31,37 @@
         </div>
     </div>
     <div id="start-menu">
+        <h1>Dinghy Sailing Race</h1>
+        <div class="menu-item">
+            <label for="laps-select">Laps:</label>
+            <select id="laps-select">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3" selected>3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+            </select>
+        </div>
+        <div class="menu-item">
+            <label for="buoys-select">Buoys:</label>
+            <select id="buoys-select">
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="8" selected>8</option>
+                <option value="10">10</option>
+                <option value="12">12</option>
+            </select>
+        </div>
         <button id="start-race">Start Race</button>
+        <button id="start-series">Start Series (3 Races)</button>
     </div>
     <div id="countdown" style="display: none;"></div>
-    <div id="race-finished" style="display: none;">
-        <h2>Race Finished!</h2>
-        <button id="restart-race">Restart Race</button>
+    <div id="race-finished" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2 id="race-finished-title">Race Finished!</h2>
+            <div id="race-results"></div>
+            <button id="restart-race">Restart Race</button>
+        </div>
     </div>
     <script src="game.js"></script>
 </body>
